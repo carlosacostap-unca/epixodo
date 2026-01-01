@@ -39,8 +39,9 @@ export function MatterSelectorModal({ isOpen, onClose, onSelect }: MatterSelecto
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Seleccionar Asunto">
+    <Modal isOpen={isOpen} onClose={onClose}>
       <div className="p-4">
+        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Seleccionar Asunto</h2>
         <div className="relative mb-4">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           <input

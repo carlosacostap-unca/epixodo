@@ -13,36 +13,36 @@ export function OverdueTasksCard() {
   const [isMissingCollection, setIsMissingCollection] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchOverdueTasks = async () => {
-      try {
-        const todayStr = toInputDate(new Date().toISOString());
+  const fetchOverdueTasks = async () => {
+    try {
+      const todayStr = toInputDate(new Date().toISOString());
 
-        // Fetch all incomplete tasks
-        const records = await pb.collection("tasks").getList(1, 200, {
-          sort: "due_date",
-          filter: `user = "${pb.authStore.model?.id}" && completed = false`,
-          requestKey: null,
-        });
+      // Fetch all incomplete tasks
+      const records = await pb.collection("tasks").getList(1, 200, {
+        sort: "due_date",
+        filter: `user = "${pb.authStore.model?.id}" && completed = false`,
+        requestKey: null,
+      });
 
-        // Filter in memory for tasks where due_date < today
-        const filteredTasks = records.items.filter((task: any) => {
-           if (!task.due_date) return false;
-           return toInputDate(task.due_date) < todayStr;
-        });
+      // Filter in memory for tasks where due_date < today
+      const filteredTasks = records.items.filter((task: any) => {
+         if (!task.due_date) return false;
+         return toInputDate(task.due_date) < todayStr;
+      });
 
-        setTasks(filteredTasks);
-      } catch (error: any) {
-        if (error.status === 404) {
-          setIsMissingCollection(true);
-        } else if (error.status !== 0) {
-          console.error("Error fetching overdue tasks:", error);
-        }
-      } finally {
-        setLoading(false);
+      setTasks(filteredTasks);
+    } catch (error: any) {
+      if (error.status === 404) {
+        setIsMissingCollection(true);
+      } else if (error.status !== 0) {
+        console.error("Error fetching overdue tasks:", error);
       }
-    };
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchOverdueTasks();
   }, []);
 

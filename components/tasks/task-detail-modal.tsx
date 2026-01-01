@@ -35,32 +35,32 @@ export function TaskDetailModal({ taskId, onClose, onUpdate }: TaskDetailModalPr
   // Debounce ref for description
   const descriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    const fetchTask = async () => {
-      try {
-        const record = await pb.collection("tasks").getOne(taskId, {
-          expand: "activity,matter",
-          requestKey: null
-        });
-        setTask(record);
-        setTitle(record.title);
-        setDescription(record.description || "");
-        if (record.due_date) setDueDate(toInputDate(record.due_date));
-        if (record.planned_date) setPlannedDate(toInputDate(record.planned_date));
-      } catch (error: any) {
-        if (error.status !== 0) {
-          console.error("Error fetching task:", error);
-          onClose();
-        }
-      } finally {
-        setLoading(false);
+  const fetchTask = async () => {
+    try {
+      const record = await pb.collection("tasks").getOne(taskId, {
+        expand: "activity,matter",
+        requestKey: null
+      });
+      setTask(record);
+      setTitle(record.title);
+      setDescription(record.description || "");
+      if (record.due_date) setDueDate(toInputDate(record.due_date));
+      if (record.planned_date) setPlannedDate(toInputDate(record.planned_date));
+    } catch (error: any) {
+      if (error.status !== 0) {
+        console.error("Error fetching task:", error);
+        onClose();
       }
-    };
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     if (taskId) {
       fetchTask();
     }
-  }, [taskId, onClose]);
+  }, [taskId]);
 
   const updateField = async (field: string, value: any) => {
     try {
