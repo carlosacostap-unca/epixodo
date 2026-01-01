@@ -3,7 +3,7 @@
 import { pb } from "@/lib/pocketbase";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, CheckSquare, Calendar, Briefcase } from "lucide-react";
+import { LayoutDashboard, CheckSquare, Calendar, Briefcase, StickyNote } from "lucide-react";
 import { FeatureCard } from "@/components/ui/feature-card";
 
 export default function PrincipalPage() {
@@ -89,6 +89,12 @@ export default function PrincipalPage() {
             description="Gestiona tus asuntos, proyectos y casos con sus actividades y tareas."
             icon={Briefcase}
             href="/matters"
+          />
+          <FeatureCard
+            title="Notas"
+            description="Crea y gestiona tus notas personales."
+            icon={StickyNote}
+            href="/notes"
           />
         </div>
       </main>
