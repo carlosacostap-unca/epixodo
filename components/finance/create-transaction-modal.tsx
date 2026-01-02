@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { pb } from "@/lib/pocketbase";
 import { Modal } from "@/components/ui/modal";
 import { Loader2, DollarSign, Calendar, Tag, AlignLeft } from "lucide-react";
@@ -9,15 +9,41 @@ interface CreateTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  transactionToEdit?: {
+    id: string;
+    amount: number;
+    type: "income" | "expense";
+    description: string;
+    category: string;
+    date: string;
+  } | null;
 }
 
-export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTransactionModalProps) {
+export function CreateTransactionModal({ isOpen, onClose, onSuccess, transactionToEdit }: CreateTransactionModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"income" | "expense">("expense");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      if (transactionToEdit) {
+        setAmount(transactionToEdit.amount.toString());
+        setType(transactionToEdit.type);
+        setDescription(transactionToEdit.description);
+        setCategory(transactionToEdit.category);
+        setDate(new Date(transactionToEdit.date).toISOString().split('T')[0]);
+      } else {
+        setAmount("");
+        setDescription("");
+        setCategory("");
+        setDate(new Date().toISOString().split('T')[0]);
+        setType("expense");
+      }
+    }
+  }, [isOpen, transactionToEdit]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,25 +52,37 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
     setIsLoading(true);
 
     try {
-      await pb.collection("transactions").create({
-        amount: parseFloat(amount),
-        type,
-        description,
-        category,
-        date: new Date(date).toISOString(),
-        user: pb.authStore.model?.id,
-      });
+      if (transactionToEdit) {
+        await pb.collection("transactions").update(transactionToEdit.id, {
+          amount: parseFloat(amount),
+          type,
+          description,
+          category,
+          date: new Date(date).toISOString(),
+        });
+      } else {
+        await pb.collection("transactions").create({
+          amount: parseFloat(amount),
+          type,
+          description,
+          category,
+          date: new Date(date).toISOString(),
+          user: pb.authStore.model?.id,
+        });
+      }
 
-      setAmount("");
-      setDescription("");
-      setCategory("");
-      setDate(new Date().toISOString().split('T')[0]);
-      setType("expense");
+      if (!transactionToEdit) {
+        setAmount("");
+        setDescription("");
+        setCategory("");
+        setDate(new Date().toISOString().split('T')[0]);
+        setType("expense");
+      }
       
       onSuccess();
       onClose();
     } catch (error) {
-      console.error("Error creating transaction:", error);
+      console.error("Error saving transaction:", error);
     } finally {
       setIsLoading(false);
     }
@@ -54,7 +92,7 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
     <Modal isOpen={isOpen} onClose={onClose}>
       <div className="p-6">
         <h2 className="mb-6 text-xl font-semibold text-gray-900 dark:text-white">
-          Nueva Transacción
+          {transactionToEdit ? "Editar Transacción" : "Nueva Transacción"}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -86,7 +124,7 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
 
           {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Monto
             </label>
             <div className="relative mt-1">
@@ -94,6 +132,7 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
                 <DollarSign className="h-4 w-4 text-gray-400" />
               </div>
               <input
+                id="amount"
                 type="number"
                 step="0.01"
                 required
@@ -107,7 +146,7 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Descripción
             </label>
             <div className="relative mt-1">
@@ -115,6 +154,7 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
                 <AlignLeft className="h-4 w-4 text-gray-400" />
               </div>
               <input
+                id="description"
                 type="text"
                 required
                 value={description}
@@ -127,7 +167,7 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
 
           {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="category" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Categoría
             </label>
             <div className="relative mt-1">
@@ -135,6 +175,7 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
                 <Tag className="h-4 w-4 text-gray-400" />
               </div>
               <input
+                id="category"
                 type="text"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
@@ -146,7 +187,7 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Fecha
             </label>
             <div className="relative mt-1">
@@ -154,6 +195,7 @@ export function CreateTransactionModal({ isOpen, onClose, onSuccess }: CreateTra
                 <Calendar className="h-4 w-4 text-gray-400" />
               </div>
               <input
+                id="date"
                 type="date"
                 required
                 value={date}

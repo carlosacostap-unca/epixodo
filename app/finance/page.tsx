@@ -17,6 +17,7 @@ export default function FinancePage() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<any>(null);
 
   useEffect(() => {
     if (!pb.authStore.isValid) {
@@ -91,6 +92,10 @@ export default function FinancePage() {
               <TransactionList 
                 transactions={transactions} 
                 onUpdate={fetchTransactions}
+                onEdit={(transaction) => {
+                  setEditingTransaction(transaction);
+                  setIsCreateModalOpen(true);
+                }}
               />
             </div>
           )}
@@ -99,8 +104,12 @@ export default function FinancePage() {
 
       <CreateTransactionModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setEditingTransaction(null);
+        }}
         onSuccess={fetchTransactions}
+        transactionToEdit={editingTransaction}
       />
     </div>
   );

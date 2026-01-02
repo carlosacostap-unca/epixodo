@@ -2,7 +2,7 @@
 
 import { pb } from "@/lib/pocketbase";
 import { formatDate } from "@/lib/date-utils";
-import { Trash2, ArrowUpRight, ArrowDownLeft } from "lucide-react";
+import { Trash2, ArrowUpRight, ArrowDownLeft, Pencil } from "lucide-react";
 
 interface Transaction {
   id: string;
@@ -16,9 +16,10 @@ interface Transaction {
 interface TransactionListProps {
   transactions: Transaction[];
   onUpdate: () => void;
+  onEdit: (transaction: Transaction) => void;
 }
 
-export function TransactionList({ transactions, onUpdate }: TransactionListProps) {
+export function TransactionList({ transactions, onUpdate, onEdit }: TransactionListProps) {
   const handleDelete = async (id: string) => {
     if (!confirm("¿Estás seguro de que deseas eliminar esta transacción?")) return;
 
@@ -100,13 +101,22 @@ export function TransactionList({ transactions, onUpdate }: TransactionListProps
                   {transaction.type === "income" ? "+" : "-"}{formatCurrency(transaction.amount)}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-right">
-                  <button
-                    onClick={() => handleDelete(transaction.id)}
-                    className="invisible text-red-600 hover:text-red-700 group-hover:visible dark:text-red-400 dark:hover:text-red-300"
-                    title="Eliminar"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => onEdit(transaction)}
+                      className="invisible text-blue-600 hover:text-blue-700 group-hover:visible dark:text-blue-400 dark:hover:text-blue-300"
+                      title="Editar"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(transaction.id)}
+                      className="invisible text-red-600 hover:text-red-700 group-hover:visible dark:text-red-400 dark:hover:text-red-300"
+                      title="Eliminar"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
