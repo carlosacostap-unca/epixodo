@@ -141,8 +141,8 @@ export function CreateTaskModal({
     const formattedRule = ruleText.charAt(0).toUpperCase() + ruleText.slice(1);
     
     if (!nextDate) return formattedRule;
-    
-    return `${formattedRule} (próxima: ${formatDate(nextDate)})`;
+
+    return `${formattedRule} (próxima: ${formatDate(nextDate.toISOString())})`;
   };
 
   const recurrenceFeedback = getRecurrenceFeedback();

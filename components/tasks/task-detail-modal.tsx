@@ -212,7 +212,7 @@ export function TaskDetailModal({ taskId, onClose, onUpdate }: TaskDetailModalPr
     
     if (!nextDate) return formattedRule;
     
-    return `${formattedRule} (próxima: ${formatDate(nextDate)})`;
+    return `${formattedRule} (próxima: ${formatDate(nextDate.toISOString())})`;
   };
 
   const statusInfo = getTaskStatusInfo(status);

@@ -8,11 +8,19 @@ interface Transaction {
   type: "income" | "expense";
 }
 
-interface FinanceStatsProps {
-  transactions: Transaction[];
+interface Account {
+  id: string;
+  name: string;
+  balance: number;
+  currency: string;
 }
 
-export function FinanceStats({ transactions }: FinanceStatsProps) {
+interface FinanceStatsProps {
+  transactions: Transaction[];
+  accounts?: Account[];
+}
+
+export function FinanceStats({ transactions, accounts = [] }: FinanceStatsProps) {
   const totalIncome = transactions
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + t.amount, 0);
@@ -21,7 +29,10 @@ export function FinanceStats({ transactions }: FinanceStatsProps) {
     .filter((t) => t.type === "expense")
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const balance = totalIncome - totalExpense;
+  // Calculate total balance from accounts if available, otherwise use transaction history
+  const balance = accounts && accounts.length > 0 
+    ? accounts.reduce((sum, acc) => sum + acc.balance, 0)
+    : totalIncome - totalExpense;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-AR", {

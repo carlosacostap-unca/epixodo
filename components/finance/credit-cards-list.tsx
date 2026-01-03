@@ -3,6 +3,7 @@
 import { CreditCard, Calendar, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { pb } from "@/lib/pocketbase";
+import { getNextClosingDate, formatDate } from "@/lib/date-utils";
 
 interface CreditCard {
   id: string;
@@ -94,6 +95,9 @@ export function CreditCardsList({ cards, onEdit, onUpdate }: CreditCardsListProp
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400">Cierre</p>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">Día {card.closing_date}</p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400" title="Próxima fecha de cierre">
+                    Próx: {formatDate(getNextClosingDate(card.closing_date).toISOString())}
+                  </p>
                 </div>
               </div>
               <div className="text-right">

@@ -195,3 +195,51 @@ export function fromInputDateTimeToUTC(dateTimeString: string): string {
   
   return new Date(baseDate.getTime() + diff).toISOString();
 }
+
+/**
+ * Calcula la próxima fecha de cierre para una tarjeta de crédito
+ * basándose en el día de cierre y la zona horaria configurada.
+ */
+export function getNextClosingDate(closingDay: number): Date {
+  const now = new Date();
+  
+  // Obtenemos la fecha actual en la zona horaria
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  }).formatToParts(now);
+  
+  const currentYear = parseInt(parts.find(p => p.type === 'year')?.value || '0');
+  const currentMonth = parseInt(parts.find(p => p.type === 'month')?.value || '0'); // 1-based
+  const currentDay = parseInt(parts.find(p => p.type === 'day')?.value || '0');
+
+  let targetYear = currentYear;
+  let targetMonth = currentMonth;
+
+  // Si el día actual es mayor al día de cierre, es el próximo mes
+  if (currentDay > closingDay) {
+    targetMonth++;
+    if (targetMonth > 12) {
+      targetMonth = 1;
+      targetYear++;
+    }
+  }
+
+  // Ajustar si el día de cierre no existe en el mes objetivo
+  // new Date(year, month, 0) devuelve el último día del mes anterior (si month es 1-based para Date.UTC pero aquí usamos constructor Date(y, m, d))
+  // Date(year, monthIndex, 0). monthIndex 0 = Ene. monthIndex 1 = Feb.
+  // targetMonth es 1-based (1=Ene). 
+  // new Date(targetYear, targetMonth, 0) -> Si targetMonth=1 (Ene), queremos saber días de Enero.
+  // No, Date(2025, 1, 0) -> 31 Enero. (Porque 1 es Feb, dia 0 es dia anterior a 1 Feb).
+  // Entonces: new Date(targetYear, targetMonth, 0) da el último día del mes `targetMonth`. Correcto.
+  const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+  const actualClosingDay = Math.min(closingDay, daysInMonth);
+
+  // Construir la fecha en UTC que corresponde a ese día en la zona horaria.
+  const dateStr = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(actualClosingDay).padStart(2, '0')}`;
+  
+  // Devolvemos objeto Date (parseado desde ISO)
+  return new Date(fromInputDateToUTC(dateStr));
+}

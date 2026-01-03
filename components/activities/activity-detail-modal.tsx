@@ -120,9 +120,9 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
   const getRecurrenceFeedback = () => {
     if (!recurrence) return null;
     try {
-      const nextDate = calculateNextDueDate(recurrence, activity?.start_date ? new Date(activity.start_date) : new Date());
+      const nextDate = calculateNextDueDate(activity?.start_date ? new Date(activity.start_date) : new Date(), recurrence);
       const ruleText = formatRecurrenceRule(recurrence);
-      const nextDateText = nextDate ? ` (próxima: ${formatDate(nextDate)})` : "";
+      const nextDateText = nextDate ? ` (próxima: ${formatDate(nextDate.toISOString())})` : "";
       return `${ruleText}${nextDateText}`;
     } catch (e) {
       return null;
@@ -323,7 +323,8 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
                               yellow: "bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-900/20 dark:text-yellow-500 dark:ring-yellow-900/10",
                               orange: "bg-orange-50 text-orange-800 ring-orange-600/20 dark:bg-orange-900/20 dark:text-orange-500 dark:ring-orange-900/10",
                               red: "bg-red-50 text-red-800 ring-red-600/20 dark:bg-red-900/20 dark:text-red-500 dark:ring-red-900/10",
-                              green: "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400 dark:ring-green-900/10"
+                              green: "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400 dark:ring-green-900/10",
+                              gray: "bg-gray-50 text-gray-600 ring-gray-500/10 dark:bg-gray-400/10 dark:text-gray-400 dark:ring-gray-400/20"
                             }[statusInfo.color]
                           }`}>
                             {statusInfo.label}

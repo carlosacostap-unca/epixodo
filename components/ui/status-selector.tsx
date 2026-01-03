@@ -43,14 +43,16 @@ export function StatusSelector({ status, onChange, variant = "badge", className 
     yellow: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
     orange: "text-orange-500 hover:text-orange-600 dark:text-orange-400 dark:hover:text-orange-300",
     red: "text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300",
-    green: "text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
+    green: "text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300",
+    gray: "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
   };
 
   const badgeColorClasses = {
     yellow: "bg-yellow-50 text-yellow-800 ring-yellow-600/20 hover:bg-yellow-100 dark:bg-yellow-900/20 dark:text-yellow-500 dark:ring-yellow-900/10 dark:hover:bg-yellow-900/30",
     orange: "bg-orange-50 text-orange-800 ring-orange-600/20 hover:bg-orange-100 dark:bg-orange-900/20 dark:text-orange-500 dark:ring-orange-900/10 dark:hover:bg-orange-900/30",
     red: "bg-red-50 text-red-800 ring-red-600/20 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-500 dark:ring-red-900/10 dark:hover:bg-red-900/30",
-    green: "bg-green-50 text-green-700 ring-green-600/20 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:ring-green-900/10 dark:hover:bg-green-900/30"
+    green: "bg-green-50 text-green-700 ring-green-600/20 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:ring-green-900/10 dark:hover:bg-green-900/30",
+    gray: "bg-gray-50 text-gray-700 ring-gray-600/20 hover:bg-gray-100 dark:bg-gray-900/20 dark:text-gray-400 dark:ring-gray-900/10 dark:hover:bg-gray-900/30"
   }[statusInfo.color];
 
   return (
