@@ -6,6 +6,7 @@ import { pb } from "@/lib/pocketbase";
 const mockSubscribe = jest.fn();
 const mockUnsubscribe = jest.fn();
 const mockUpdate = jest.fn().mockResolvedValue({});
+const mockCreate = jest.fn().mockResolvedValue({});
 const mockGetList = jest.fn();
 
 jest.mock("@/lib/pocketbase", () => ({
@@ -15,6 +16,7 @@ jest.mock("@/lib/pocketbase", () => ({
         return {
           getList: mockGetList,
           update: mockUpdate,
+          create: mockCreate,
           subscribe: mockSubscribe,
           unsubscribe: mockUnsubscribe,
         };
@@ -97,34 +99,65 @@ describe("TasksList", () => {
     expect(screen.getByText("Task Future")).toBeInTheDocument();
   });
 
-  it("should toggle task completion", async () => {
-    const task = { id: "1", title: "Task to Complete", due_date: "2024-01-10T10:00:00Z", completed: false };
+  it("should update task status", async () => {
+    const task = { id: "1", title: "Task to Update", due_date: "2024-01-10T10:00:00Z", completed: false, status: 'pending' };
     mockGetList.mockResolvedValue({ items: [task] });
 
     await act(async () => {
       render(<TasksList />);
     });
 
-    const checkButton = screen.getAllByRole("button")[1]; // First one is likely "New Task" or toggle section
-    // Actually, finding the button inside the task card is safer.
-    // The check button has a specific class or icon. 
-    // Let's find the task card first.
+    // Find the status trigger (icon variant has title "Pendiente")
+    const statusTrigger = screen.getByTitle("Pendiente");
     
-    // We can use the container to find the button
-    const taskTitle = screen.getByText("Task to Complete");
-    const taskCard = taskTitle.closest("div.group");
-    const toggleBtn = taskCard?.querySelector("button"); 
+    await act(async () => {
+        fireEvent.click(statusTrigger);
+    });
+
+    // Find option in dropdown
+    const completedOption = screen.getByText("Completada");
+
+    await act(async () => {
+        fireEvent.click(completedOption);
+    });
     
-    if (toggleBtn) {
-        await act(async () => {
-            fireEvent.click(toggleBtn);
-        });
-        
-        expect(mockUpdate).toHaveBeenCalledWith("1", { completed: true });
-        expect(mockGetList).toHaveBeenCalledTimes(2); // Initial + Refetch
-    } else {
-        throw new Error("Toggle button not found");
-    }
+    expect(mockUpdate).toHaveBeenCalledWith("1", { status: 'completed', completed: true });
+    expect(mockGetList).toHaveBeenCalledTimes(2); 
+  });
+
+  it("should create next task when completing a recurring task", async () => {
+    const recurringTask = {
+        id: "1",
+        title: "Recurring Task",
+        due_date: "2024-01-10T12:00:00Z",
+        completed: false,
+        status: 'pending',
+        recurrence: JSON.stringify({ frequency: 'daily', interval: 1 })
+    };
+    mockGetList.mockResolvedValue({ items: [recurringTask] });
+
+    await act(async () => {
+      render(<TasksList />);
+    });
+
+    // Find the status trigger
+    const statusTrigger = screen.getByTitle("Pendiente");
+    await act(async () => { fireEvent.click(statusTrigger); });
+    
+    // Select completed
+    const completedOption = screen.getByText("Completada");
+    await act(async () => { fireEvent.click(completedOption); });
+
+    // Expect update to complete current task
+    expect(mockUpdate).toHaveBeenCalledWith("1", { status: 'completed', completed: true });
+
+    // Expect create to be called for next task (should be 2024-01-11 since fake time is 2024-01-10)
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Recurring Task",
+        status: 'pending',
+        completed: false,
+        recurrence: recurringTask.recurrence
+    }));
   });
 
   it("should open create modal", async () => {

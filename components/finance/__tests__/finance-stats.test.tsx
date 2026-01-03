@@ -45,8 +45,9 @@ describe('FinanceStats', () => {
      render(<FinanceStats transactions={negativeTransactions} />);
      
      // Balance should be -100
-     const balanceElement = screen.getByText((content) => content.includes('-100,00'));
-     expect(balanceElement).toBeInTheDocument();
-     expect(balanceElement).toHaveClass('text-red-600');
+      // Note: formatting might place the minus sign before the currency symbol (e.g. -$ 100,00)
+      const balanceElement = screen.getByText((content) => content.includes('100,00') && content.includes('-'));
+      expect(balanceElement).toBeInTheDocument();
+      expect(balanceElement).toHaveClass('text-red-600');
   });
 });

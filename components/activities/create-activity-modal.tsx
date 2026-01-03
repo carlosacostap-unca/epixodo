@@ -104,36 +104,6 @@ export function CreateActivityModal({
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="matter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Asunto (Opcional)
-            </label>
-            <select
-              id="matter"
-              value={selectedMatter}
-              onChange={(e) => setSelectedMatter(e.target.value)}
-              className="w-full rounded-md border-0 bg-gray-50 px-3 py-2 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-zinc-800 dark:text-white dark:ring-zinc-700 dark:focus:ring-blue-500"
-            >
-              <option value="">-- Seleccionar asunto --</option>
-              {matters.map((matter) => (
-                <option key={matter.id} value={matter.id}>
-                  {matter.title}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Descripción
-            </label>
-            <RichTextEditor 
-              content={description} 
-              onChange={setDescription}
-              placeholder="Detalles de la actividad..."
-            />
-          </div>
-
           <div className="grid gap-6 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <label htmlFor="startDate" className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -160,6 +130,36 @@ export function CreateActivityModal({
                 className="w-full rounded-md border-0 bg-gray-50 px-3 py-2 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-zinc-800 dark:text-white dark:ring-zinc-700 dark:focus:ring-blue-500"
               />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label htmlFor="matter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Asociar a Asunto (Opcional)
+            </label>
+            <select
+              id="matter"
+              value={selectedMatter}
+              onChange={(e) => setSelectedMatter(e.target.value)}
+              className="w-full rounded-md border-0 bg-gray-50 px-3 py-2 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-zinc-800 dark:text-white dark:ring-zinc-700 dark:focus:ring-blue-500"
+            >
+              <option value="">-- Seleccionar asunto --</option>
+              {matters.map((matter) => (
+                <option key={matter.id} value={matter.id}>
+                  {matter.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Descripción
+            </label>
+            <RichTextEditor 
+              content={description} 
+              onChange={setDescription}
+              placeholder="Detalles de la actividad..."
+            />
           </div>
 
           <div className="mt-4 flex justify-end gap-3">

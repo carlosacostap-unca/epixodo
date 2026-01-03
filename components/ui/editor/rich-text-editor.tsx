@@ -5,7 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import { Bold, Italic, List, ListOrdered, Link as LinkIcon, Unlink } from 'lucide-react';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 interface RichTextEditorProps {
   content: string;
@@ -41,6 +41,12 @@ export function RichTextEditor({ content, onChange, onBlur, placeholder = 'Escri
       onBlur?.();
     },
   });
+
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content);
+    }
+  }, [content, editor]);
 
   const setLink = useCallback(() => {
     if (!editor) return;

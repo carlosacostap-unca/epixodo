@@ -2,12 +2,16 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { pb } from "@/lib/pocketbase";
-import { Trash2, Loader2, CheckSquare, CheckCircle2 } from "lucide-react";
+import { Trash2, Loader2, CheckSquare, CheckCircle2, Circle, Ban, Clock, Pencil, ChevronRight } from "lucide-react";
 import { RichTextEditor } from "@/components/ui/editor/rich-text-editor";
-import { toInputDateTime, fromInputDateTimeToUTC } from "@/lib/date-utils";
+import { toInputDateTime, fromInputDateTimeToUTC, formatDate } from "@/lib/date-utils";
 import { Modal } from "@/components/ui/modal";
 import { TaskDetailModal } from "../tasks/task-detail-modal";
 import { CreateTaskModal } from "../tasks/create-task-modal";
+import { getTaskStatusInfo } from "../tasks/task-constants";
+import { RecurrenceSelector } from "@/components/ui/recurrence-selector";
+import { RecurrenceRule, parseRecurrenceRule, calculateNextDueDate, formatRecurrenceRule } from "@/lib/recurrence-utils";
+import { useRecurringTaskCompletion } from "@/hooks/use-recurring-task-completion";
 
 interface ActivityDetailModalProps {
   activityId: string;
@@ -24,6 +28,7 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
   const [description, setDescription] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [recurrence, setRecurrence] = useState<RecurrenceRule | null>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
@@ -49,12 +54,14 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
       if (record.end_date) {
         setEndDate(toInputDateTime(record.end_date));
       }
+      setRecurrence(parseRecurrenceRule(record.recurrence));
       
       // Cargar tareas asociadas
       try {
         const tasksRecords = await pb.collection("tasks").getList(1, 50, {
           filter: `activity = "${activityId}"`,
           sort: "-created",
+          expand: "activity,matter",
           requestKey: null
         });
         setTasks(tasksRecords.items);
@@ -97,6 +104,8 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
     };
   }, [activityId, fetchActivity]);
 
+  const { handleTaskUpdate, RecurrenceModal } = useRecurringTaskCompletion(fetchActivity);
+
   const handleUpdate = async (data: any) => {
     try {
       const updatedActivity = await pb.collection("activities").update(activityId, data);
@@ -105,6 +114,18 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
     } catch (error) {
       console.error("Error updating activity:", error);
       // Revert changes if needed or show error
+    }
+  };
+
+  const getRecurrenceFeedback = () => {
+    if (!recurrence) return null;
+    try {
+      const nextDate = calculateNextDueDate(recurrence, activity?.start_date ? new Date(activity.start_date) : new Date());
+      const ruleText = formatRecurrenceRule(recurrence);
+      const nextDateText = nextDate ? ` (próxima: ${formatDate(nextDate)})` : "";
+      return `${ruleText}${nextDateText}`;
+    } catch (e) {
+      return null;
     }
   };
 
@@ -123,6 +144,11 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
     handleUpdate({ [field]: utcDate });
   };
 
+  const handleRecurrenceChange = (newRule: RecurrenceRule | null) => {
+    setRecurrence(newRule);
+    handleUpdate({ recurrence: newRule ? JSON.stringify(newRule) : null });
+  };
+
   const handleDescriptionBlur = () => {
     if (activity && description !== (activity.description || "")) {
       handleUpdate({ description });
@@ -131,9 +157,10 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
 
   const toggleTaskStatus = async (task: any) => {
     try {
-      await pb.collection("tasks").update(task.id, {
-        completed: !task.completed,
-      });
+      const newCompleted = !task.completed;
+      const newStatus = newCompleted ? 'completed' : 'pending';
+      
+      await handleTaskUpdate(task, newStatus);
     } catch (error) {
       console.error("Error updating task status:", error);
       alert("No se pudo actualizar el estado de la tarea");
@@ -198,6 +225,19 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
                 className="w-full rounded-md border-0 bg-gray-50/50 px-2.5 py-1.5 text-sm text-gray-900 ring-1 ring-inset ring-gray-200 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-zinc-800/50 dark:text-white dark:ring-zinc-700 dark:focus:ring-blue-500"
               />
             </div>
+
+            <div className="flex flex-col gap-1.5">
+               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Recurrencia</span>
+               <RecurrenceSelector 
+                  value={recurrence} 
+                  onChange={handleRecurrenceChange} 
+               />
+               {getRecurrenceFeedback() && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 animate-in slide-in-from-top-1 fade-in duration-300">
+                    {getRecurrenceFeedback()}
+                  </p>
+               )}
+            </div>
           </div>
 
           {tasks.length > 0 && (
@@ -242,41 +282,70 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
             </div>
             
             {tasks.length > 0 ? (
-              <div className="space-y-3">
-                {tasks.map(task => (
+              <div className="space-y-2">
+                {tasks.map(task => {
+                  const currentStatus = task.status || (task.completed ? 'completed' : 'pending');
+                  const statusInfo = getTaskStatusInfo(currentStatus);
+                  
+                  return (
                   <div 
                     key={task.id}
                     onClick={() => setSelectedTaskId(task.id)}
-                    className="flex items-center justify-between rounded-lg border border-gray-200 p-3 hover:bg-gray-50 dark:border-zinc-700 dark:hover:bg-zinc-800/50 cursor-pointer group"
+                    className="group relative flex items-center justify-between rounded-lg border border-gray-200 p-3 hover:bg-gray-50 dark:border-zinc-700 dark:hover:bg-zinc-800/50 cursor-pointer transition-all"
                   >
                     <div className="flex items-center gap-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleTaskStatus(task);
-                        }}
-                        className={`flex-shrink-0 rounded-full p-1 transition-colors ${
-                          task.completed
-                            ? "text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
-                            : "text-gray-300 hover:bg-gray-100 hover:text-gray-500 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400"
-                        }`}
-                        title={task.completed ? "Marcar como pendiente" : "Marcar como completada"}
-                      >
-                        <CheckCircle2 className={`h-5 w-5 ${task.completed ? "fill-current" : ""}`} />
-                      </button>
-                      <span className={`text-sm font-medium ${task.completed ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                      <div onClick={(e) => e.stopPropagation()}>
+                         <button
+                           onClick={() => toggleTaskStatus(task)}
+                           className="flex h-8 w-8 -ml-2 items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                           title={task.completed ? "Marcar como pendiente" : "Completar"}
+                         >
+                           <div className={`flex h-4 w-4 items-center justify-center rounded-full border transition-colors
+                              ${task.completed 
+                                ? 'border-green-500 bg-green-500 text-white' 
+                                : 'border-gray-300 dark:border-zinc-600 group-hover:border-blue-500 dark:group-hover:border-blue-400'
+                              }
+                           `}>
+                             {task.completed && <CheckCircle2 className="h-3 w-3" />}
+                           </div>
+                         </button>
+                      </div>
+                      <span className={`text-sm font-medium transition-colors ${task.completed ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'}`}>
                         {task.title}
                       </span>
                     </div>
-                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
-                      task.completed 
-                        ? "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400 dark:ring-green-900/10" 
-                        : "bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-900/20 dark:text-yellow-500 dark:ring-yellow-900/10"
-                    }`}>
-                      {task.completed ? 'Completada' : 'Pendiente'}
-                    </span>
+
+                    <div className="flex items-center">
+                       {/* Badge visible by default, hidden on group hover */}
+                       <div className="group-hover:hidden transition-opacity">
+                          <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                             {
+                              yellow: "bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-900/20 dark:text-yellow-500 dark:ring-yellow-900/10",
+                              orange: "bg-orange-50 text-orange-800 ring-orange-600/20 dark:bg-orange-900/20 dark:text-orange-500 dark:ring-orange-900/10",
+                              red: "bg-red-50 text-red-800 ring-red-600/20 dark:bg-red-900/20 dark:text-red-500 dark:ring-red-900/10",
+                              green: "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400 dark:ring-green-900/10"
+                            }[statusInfo.color]
+                          }`}>
+                            {statusInfo.label}
+                          </span>
+                       </div>
+
+                       {/* Quick Actions visible on group hover */}
+                       <div className="hidden group-hover:flex items-center gap-1 animate-in fade-in duration-200">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTaskId(task.id);
+                            }}
+                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md dark:hover:bg-blue-900/20 transition-colors"
+                            title="Editar tarea"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                       </div>
+                    </div>
                   </div>
-                ))}
+                )})}
               </div>
             ) : (
               <p className="text-sm text-gray-500 italic">No hay tareas asociadas a esta actividad.</p>
@@ -320,6 +389,8 @@ export function ActivityDetailModal({ activityId, onClose, onUpdate }: ActivityD
         }}
         initialActivityId={activityId}
       />
+      
+      <RecurrenceModal />
     </Modal>
   );
 }

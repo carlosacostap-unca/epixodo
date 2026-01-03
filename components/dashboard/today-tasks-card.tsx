@@ -6,6 +6,7 @@ import { Calendar, CheckCircle2, Circle } from "lucide-react";
 import Link from "next/link";
 import { formatDate, toInputDate } from "@/lib/date-utils";
 import { TaskDetailModal } from "../tasks/task-detail-modal";
+import { updateTaskStatusWithRecurrence } from "@/lib/task-actions";
 
 export function TodayTasksCard() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -51,9 +52,7 @@ export function TodayTasksCard() {
 
   const toggleTask = async (task: any) => {
     try {
-      await pb.collection("tasks").update(task.id, {
-        completed: true,
-      });
+      await updateTaskStatusWithRecurrence(task, 'completed');
       setTasks(tasks.filter((t) => t.id !== task.id));
     } catch (error) {
       console.error("Error completing task:", error);

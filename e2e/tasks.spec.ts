@@ -82,17 +82,19 @@ test.describe('Tasks Module', () => {
     
     // Click "Crear nueva tarea"
     await page.click('text=Crear nueva tarea');
-    await expect(page.getByRole('heading', { name: 'Nueva Tarea', level: 1 })).toBeVisible();
+    
+    // Wait for modal input to be visible (using placeholder as it's the main visual cue now)
+    await expect(page.getByPlaceholder('Título de la tarea')).toBeVisible();
     
     // Fill form
-    await page.fill('input#title', 'E2E Test Task');
+    await page.getByPlaceholder('Título de la tarea').fill('E2E Test Task');
     await page.locator('.ProseMirror').fill('This is a test task description');
     
     // Submit
     await page.click('button:has-text("Crear Tarea")');
     
     // Verify modal closed
-    await expect(page.getByRole('heading', { name: 'Nueva Tarea', level: 1 })).not.toBeVisible();
+    await expect(page.getByPlaceholder('Título de la tarea')).not.toBeVisible();
     
     // Verify task in list
     await expect(page.getByText('E2E Test Task')).toBeVisible();

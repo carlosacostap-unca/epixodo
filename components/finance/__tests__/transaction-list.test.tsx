@@ -64,13 +64,12 @@ describe('TransactionList', () => {
     expect(screen.getByText('Groceries')).toBeInTheDocument();
     
     // Check formatting
-    // We expect the amount to be present. Since Intl can vary, we check for the number.
-    // The received output in some envs is "1000,00" without dot.
+    // We expect the amount to be present and formatted as ARS ($ symbol)
     const incomeRow = screen.getByText('Salary').closest('tr');
-    expect(incomeRow).toHaveTextContent(/1\.?000/); // Matches 1.000 or 1000
+    expect(incomeRow).toHaveTextContent(/\$\s?1\.000/); // Matches $ 1.000 or $1.000
     
     const expenseRow = screen.getByText('Groceries').closest('tr');
-    expect(expenseRow).toHaveTextContent('50');
+    expect(expenseRow).toHaveTextContent(/\$\s?50/);
     
     // Check dates (mocked)
     expect(screen.getByText('Formatted 2023-01-01')).toBeInTheDocument();

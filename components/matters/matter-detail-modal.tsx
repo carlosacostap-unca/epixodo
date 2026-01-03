@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { pb } from "@/lib/pocketbase";
-import { Trash2, Calendar, Loader2, CheckSquare, Pencil, Clock, CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
+import { Trash2, Calendar, Loader2, CheckSquare, Pencil, Clock, CheckCircle2, ChevronDown, ChevronRight, FolderTree } from "lucide-react";
 import Link from "next/link";
 import { RichTextEditor } from "@/components/ui/editor/rich-text-editor";
 import { formatDate, toInputDate, fromInputDateToUTC, formatDateTime } from "@/lib/date-utils";
@@ -11,14 +11,17 @@ import { ActivityDetailModal } from "../activities/activity-detail-modal";
 import { TaskDetailModal } from "../tasks/task-detail-modal";
 import { CreateTaskModal } from "../tasks/create-task-modal";
 import { CreateActivityModal } from "../activities/create-activity-modal";
+import { CreateMatterModal } from "./create-matter-modal";
+import { useRecurringTaskCompletion } from "@/hooks/use-recurring-task-completion";
 
 interface MatterDetailModalProps {
   matterId: string;
   onClose: () => void;
   onUpdate: () => void;
+  onNavigate?: (id: string) => void;
 }
 
-export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailModalProps) {
+export function MatterDetailModal({ matterId, onClose, onUpdate, onNavigate }: MatterDetailModalProps) {
   const [matter, setMatter] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -30,6 +33,7 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
   // Lists
   const [tasks, setTasks] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
+  const [subMatters, setSubMatters] = useState<any[]>([]);
   const [allTasks, setAllTasks] = useState<any[]>([]);
   
   // UI states
@@ -40,6 +44,7 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [isCreateActivityModalOpen, setIsCreateActivityModalOpen] = useState(false);
+  const [isCreateSubMatterModalOpen, setIsCreateSubMatterModalOpen] = useState(false);
 
   const onCloseRef = useRef(onClose);
   
@@ -50,6 +55,7 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
   const fetchMatter = useCallback(async () => {
     try {
       const record = await pb.collection("matters").getOne(matterId, {
+        expand: 'parent',
         requestKey: null
       });
       setMatter(record);
@@ -58,6 +64,18 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
       
       if (record.due_date) {
         setDueDate(toInputDate(record.due_date));
+      }
+
+      // Cargar subasuntos
+      try {
+        const subMattersRecords = await pb.collection("matters").getList(1, 50, {
+          filter: `parent = "${matterId}"`,
+          sort: "-created",
+          requestKey: null
+        });
+        setSubMatters(subMattersRecords.items);
+      } catch (error) {
+        console.log("No se pudieron cargar los subasuntos");
       }
       
       // Cargar actividades asociadas
@@ -77,6 +95,7 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
         const tasksRecords = await pb.collection("tasks").getList(1, 50, {
           filter: `matter = "${matterId}"`,
           sort: "-created",
+          expand: "activity,matter",
           requestKey: null
         });
         setTasks(tasksRecords.items);
@@ -133,6 +152,13 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
           }
       });
 
+      // Subscribe to submatters changes
+      pb.collection("matters").subscribe("*", (e) => {
+         if (e.record.parent === matterId) {
+             fetchMatter();
+         }
+      });
+
       pb.collection("activities").subscribe("*", (e) => {
          fetchMatter();
       });
@@ -144,10 +170,13 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
 
     return () => {
         pb.collection("matters").unsubscribe(matterId);
+        pb.collection("matters").unsubscribe("*");
         pb.collection("activities").unsubscribe("*");
         pb.collection("tasks").unsubscribe("*");
     };
   }, [matterId, fetchMatter]);
+
+  const { handleTaskUpdate, RecurrenceModal } = useRecurringTaskCompletion(fetchMatter);
 
   const handleUpdate = async (data: any) => {
     try {
@@ -179,9 +208,9 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
 
   const toggleTaskStatus = async (task: any) => {
     try {
-      await pb.collection("tasks").update(task.id, {
-        completed: !task.completed,
-      });
+      const newCompleted = !task.completed;
+      const newStatus = newCompleted ? 'completed' : 'pending';
+      await handleTaskUpdate(task, newStatus);
     } catch (error) {
       console.error("Error updating task status:", error);
       alert("No se pudo actualizar el estado de la tarea");
@@ -222,6 +251,17 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
         </div>
       ) : matter ? (
         <div className="p-6 sm:p-8">
+          {/* Breadcrumb if parent exists */}
+          {matter.expand?.parent && (
+             <button 
+               onClick={() => onNavigate && onNavigate(matter.parent)}
+               className="mb-4 flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
+             >
+               <ChevronDown className="h-4 w-4 rotate-90" />
+               Volver a {matter.expand.parent.title}
+             </button>
+          )}
+
           {/* Header with Title Input */}
           <div className="flex items-start gap-4">
              <div className="flex-grow">
@@ -274,9 +314,52 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
                placeholder="Detalles del asunto..."
              />
           </div>
+
+          {/* Sub-matters List */}
+          <div className="mt-8 border-t border-gray-100 pt-6 dark:border-zinc-800">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <FolderTree className="h-5 w-5" />
+                Subasuntos
+              </h2>
+              <button
+                onClick={() => setIsCreateSubMatterModalOpen(true)}
+                className="text-sm font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400"
+              >
+                + Agregar Subasunto
+              </button>
+            </div>
+
+            {subMatters.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2 mb-8">
+                {subMatters.map(subMatter => (
+                  <div 
+                    key={subMatter.id}
+                    onClick={() => onNavigate && onNavigate(subMatter.id)}
+                    className="flex cursor-pointer flex-col justify-between rounded-lg border border-gray-200 p-4 hover:border-blue-500 hover:bg-gray-50 dark:border-zinc-700 dark:hover:border-blue-500 dark:hover:bg-zinc-800/50 transition-colors"
+                  >
+                    <div>
+                      <h3 className="font-medium text-gray-900 dark:text-white">{subMatter.title}</h3>
+                      {subMatter.description && (
+                         <div className="mt-1 line-clamp-1 text-xs text-gray-500" dangerouslySetInnerHTML={{ __html: subMatter.description }} />
+                      )}
+                    </div>
+                    {subMatter.due_date && (
+                      <div className="mt-3 flex items-center gap-1 text-xs text-gray-500">
+                        <Calendar className="h-3 w-3" />
+                        {formatDate(subMatter.due_date)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 italic mb-8">No hay subasuntos asociados.</p>
+            )}
+          </div>
           
           {/* Activities List */}
-          <div className="mt-8 border-t border-gray-100 pt-6 dark:border-zinc-800">
+          <div className="border-t border-gray-100 pt-6 dark:border-zinc-800">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <Clock className="h-5 w-5" />
@@ -332,7 +415,7 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
                               {activityTasks.map(task => (
                                 <div 
                                   key={task.id}
-                                  className="flex items-center justify-between rounded-md border border-gray-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-900"
+                                  className="group flex items-center justify-between rounded-md border border-gray-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-900 hover:border-blue-300 dark:hover:border-blue-700 transition-colors"
                                 >
                                   <div className="flex items-center gap-3">
                                     <button
@@ -350,7 +433,7 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
                                       <CheckCircle2 className={`h-4 w-4 ${task.completed ? "fill-current" : ""}`} />
                                     </button>
                                     <span 
-                                      className={`text-sm ${task.completed ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'} cursor-pointer hover:underline`}
+                                      className={`text-sm ${task.completed ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'} cursor-pointer hover:text-blue-600 transition-colors`}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setSelectedTaskId(task.id);
@@ -359,6 +442,16 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
                                       {task.title}
                                     </span>
                                   </div>
+                                  
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedTaskId(task.id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 transition-all"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </button>
                                 </div>
                               ))}
                             </div>
@@ -390,44 +483,60 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
             </div>
             
             {tasks.length > 0 ? (
-              <div className="space-y-3">
-                {tasks.map(task => (
+              <div className="space-y-2">
+                {tasks.map(task => {
+                  // Determine status color (simplified for now as we don't have getTaskStatusInfo imported, or we can import it)
+                  // Assuming basic styling for now to match ActivityDetailModal structure
+                  const isCompleted = task.completed;
+                  
+                  return (
                   <div 
                     key={task.id}
                     onClick={() => setSelectedTaskId(task.id)}
-                    className="flex items-center justify-between rounded-lg border border-gray-200 p-3 hover:bg-gray-50 dark:border-zinc-700 dark:hover:bg-zinc-800/50 cursor-pointer group"
+                    className="group relative flex items-center justify-between rounded-lg border border-gray-200 p-3 hover:bg-gray-50 dark:border-zinc-700 dark:hover:bg-zinc-800/50 cursor-pointer transition-all"
                   >
                     <div className="flex items-center gap-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleTaskStatus(task);
-                        }}
-                        className={`flex-shrink-0 rounded-full p-1 transition-colors ${
-                          task.completed
-                            ? "text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
-                            : "text-gray-300 hover:bg-gray-100 hover:text-gray-500 dark:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-400"
-                        }`}
-                        title={task.completed ? "Marcar como pendiente" : "Marcar como completada"}
-                      >
-                        <CheckCircle2 className={`h-5 w-5 ${task.completed ? "fill-current" : ""}`} />
-                      </button>
-                      <span className={`text-sm font-medium ${task.completed ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                      <div onClick={(e) => e.stopPropagation()}>
+                         <button
+                           onClick={() => toggleTaskStatus(task)}
+                           className="flex h-8 w-8 -ml-2 items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                           title={isCompleted ? "Marcar como pendiente" : "Completar"}
+                         >
+                           <div className={`flex h-4 w-4 items-center justify-center rounded-full border transition-colors
+                              ${isCompleted 
+                                ? 'border-green-500 bg-green-500 text-white' 
+                                : 'border-gray-300 dark:border-zinc-600 group-hover:border-blue-500 dark:group-hover:border-blue-400'
+                              }
+                           `}>
+                             {isCompleted && <CheckCircle2 className="h-3 w-3" />}
+                           </div>
+                         </button>
+                      </div>
+                      <span className={`text-sm font-medium transition-colors ${isCompleted ? 'line-through text-gray-500' : 'text-gray-900 dark:text-white'}`}>
                         {task.title}
                       </span>
                     </div>
-                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
-                      task.completed 
-                        ? "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/20 dark:text-green-400 dark:ring-green-900/10" 
-                        : "bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-900/20 dark:text-yellow-500 dark:ring-yellow-900/10"
-                    }`}>
-                      {task.completed ? 'Completada' : 'Pendiente'}
-                    </span>
+
+                    <div className="flex items-center">
+                       {/* Quick Actions visible on group hover */}
+                       <div className="hidden group-hover:flex items-center gap-1 animate-in fade-in duration-200">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTaskId(task.id);
+                            }}
+                            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md dark:hover:bg-blue-900/20 transition-colors"
+                            title="Editar tarea"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                       </div>
+                    </div>
                   </div>
-                ))}
+                )})}
               </div>
             ) : (
-              <p className="text-sm text-gray-500 italic">No hay tareas asociadas.</p>
+              <p className="text-sm text-gray-500 italic">No hay tareas directas en este asunto.</p>
             )}
           </div>
 
@@ -491,6 +600,18 @@ export function MatterDetailModal({ matterId, onClose, onUpdate }: MatterDetailM
         }}
         initialMatterId={matterId}
       />
+
+      <CreateMatterModal
+        isOpen={isCreateSubMatterModalOpen}
+        onClose={() => setIsCreateSubMatterModalOpen(false)}
+        onSuccess={() => {
+          fetchMatter();
+          onUpdate(); // Update parent list to show badge count
+        }}
+        initialParentId={matterId}
+      />
+      
+      <RecurrenceModal />
     </Modal>
   );
 }

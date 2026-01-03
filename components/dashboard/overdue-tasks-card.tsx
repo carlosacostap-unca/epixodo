@@ -6,6 +6,7 @@ import { Calendar, AlertCircle, Circle } from "lucide-react";
 import Link from "next/link";
 import { formatDate, toInputDate } from "@/lib/date-utils";
 import { TaskDetailModal } from "../tasks/task-detail-modal";
+import { useRecurringTaskCompletion } from "@/hooks/use-recurring-task-completion";
 
 export function OverdueTasksCard() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -46,12 +47,11 @@ export function OverdueTasksCard() {
     fetchOverdueTasks();
   }, []);
 
+  const { handleTaskUpdate, RecurrenceModal } = useRecurringTaskCompletion(fetchOverdueTasks);
+
   const toggleTask = async (task: any) => {
     try {
-      await pb.collection("tasks").update(task.id, {
-        completed: true,
-      });
-      setTasks(tasks.filter((t) => t.id !== task.id));
+      await handleTaskUpdate(task, 'completed');
     } catch (error) {
       console.error("Error completing task:", error);
     }
@@ -114,6 +114,7 @@ export function OverdueTasksCard() {
           }}
         />
       )}
+      <RecurrenceModal />
     </div>
   );
 }
