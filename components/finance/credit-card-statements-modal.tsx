@@ -185,7 +185,7 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
         )}
 
         {/* Add New Statement Form */}
-        <form onSubmit={handleAddStatement} className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
+        <form onSubmit={handleSubmit} className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
           <h3 className="mb-3 text-sm font-medium text-gray-900 dark:text-white">Nuevo Resumen Mensual</h3>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
@@ -284,14 +284,29 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
             </div>
           )}
 
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex justify-end gap-2">
+            {editingId && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-zinc-700"
+              >
+                Cancelar
+              </button>
+            )}
             <button
               type="submit"
               disabled={isSubmitting}
               className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Agregar
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : editingId ? (
+                <Pencil className="h-4 w-4" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {editingId ? "Actualizar" : "Agregar"}
             </button>
           </div>
         </form>
@@ -330,13 +345,22 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
                       {formatDate(stmt.due_date)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDelete(stmt.id)}
-                        className="rounded-full p-1.5 text-gray-400 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                        title="Eliminar resumen"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100">
+                        <button
+                          onClick={() => handleEdit(stmt)}
+                          className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-zinc-700 dark:hover:text-gray-200"
+                          title="Editar resumen"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(stmt.id)}
+                          className="rounded-full p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                          title="Eliminar resumen"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
