@@ -1,9 +1,9 @@
 "use client";
 
-import { CreditCard, Calendar, Pencil, Trash2 } from "lucide-react";
+import { CreditCard, Calendar, Pencil, Trash2, CalendarRange } from "lucide-react";
 import { useState } from "react";
 import { pb } from "@/lib/pocketbase";
-import { getNextClosingDate, formatDate } from "@/lib/date-utils";
+import { CreditCardStatementsModal } from "./credit-card-statements-modal";
 
 interface CreditCard {
   id: string;
@@ -19,6 +19,7 @@ interface CreditCardsListProps {
 }
 
 export function CreditCardsList({ cards, onEdit, onUpdate }: CreditCardsListProps) {
+  const [statementsCard, setStatementsCard] = useState<CreditCard | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
@@ -67,6 +68,14 @@ export function CreditCardsList({ cards, onEdit, onUpdate }: CreditCardsListProp
             
             <div className="flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
               <button
+                onClick={() => setStatementsCard(card)}
+                className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-blue-600 dark:hover:bg-zinc-800 dark:hover:text-blue-400"
+                aria-label={`Gestionar vencimientos de ${card.name}`}
+                title="Gestionar vencimientos mensuales"
+              >
+                <CalendarRange className="h-4 w-4" />
+              </button>
+              <button
                 onClick={() => onEdit(card)}
                 className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-blue-600 dark:hover:bg-zinc-800 dark:hover:text-blue-400"
                 aria-label={`Editar ${card.name}`}
@@ -92,22 +101,19 @@ export function CreditCardsList({ cards, onEdit, onUpdate }: CreditCardsListProp
             <div className="flex justify-between border-t border-gray-100 pt-3 dark:border-zinc-800">
               <div className="flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Cierre</p>
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">Día {card.closing_date}</p>
-                  <p className="text-xs text-blue-600 dark:text-blue-400" title="Próxima fecha de cierre">
-                    Próx: {formatDate(getNextClosingDate(card.closing_date).toISOString())}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Vencimiento</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">Día {card.due_date}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Gestiona los vencimientos mes a mes
+                </p>
               </div>
             </div>
           </div>
         </div>
       ))}
+      <CreditCardStatementsModal
+        isOpen={!!statementsCard}
+        onClose={() => setStatementsCard(null)}
+        card={statementsCard}
+      />
     </div>
   );
 }

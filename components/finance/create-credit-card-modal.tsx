@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { pb } from "@/lib/pocketbase";
 import { Modal } from "@/components/ui/modal";
-import { Loader2, CreditCard, Calendar, AlertCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 interface CreateCreditCardModalProps {
   isOpen: boolean;
@@ -57,11 +57,15 @@ export function CreateCreditCardModal({ isOpen, onClose, onSuccess, cardToEdit }
 
       onSuccess();
       onClose();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error("Error saving credit card:", error);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const errorData = error.response?.data || {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const errorDetails = Object.entries(errorData)
-        .map(([key, val]: [string, any]) => `${key}: ${val.message}`)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map(([key, val]: [string, any]) => `${key}: ${(val as any).message}`)
         .join("\n");
       
       alert(`Error al guardar la tarjeta:\n${errorDetails || error.message}`);
@@ -95,49 +99,10 @@ export function CreateCreditCardModal({ isOpen, onClose, onSuccess, cardToEdit }
             />
           </div>
 
-          {/* Dates */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="closing" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Día de Cierre
-              </label>
-              <select
-                id="closing"
-                value={closingDate}
-                onChange={(e) => setClosingDate(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
-              >
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                  <option key={day} value={day}>
-                    Día {day}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="due" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Día de Vencimiento
-              </label>
-              <select
-                id="due"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
-              >
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                  <option key={day} value={day}>
-                    Día {day}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="mt-6 flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-4">
             <button
               type="button"
               onClick={onClose}
-              disabled={isLoading}
               className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-zinc-800"
             >
               Cancelar
