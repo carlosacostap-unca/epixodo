@@ -14,14 +14,14 @@ import { CreateTransactionModal } from "@/components/finance/create-transaction-
 import { CreateAccountModal } from "@/components/finance/create-account-modal";
 import { CreateCreditCardModal } from "@/components/finance/create-credit-card-modal";
 import { CreateCreditCardPurchaseModal } from "@/components/finance/create-credit-card-purchase-modal";
-import { Loader2, ArrowLeft, LayoutDashboard, Wallet, CreditCard, ShoppingCart } from "lucide-react";
+import { Loader2, ArrowLeft, LayoutDashboard, Wallet, CreditCard, ShoppingCart, Banknote, FileText, Zap } from "lucide-react";
 import Link from "next/link";
 
 export default function FinancePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'accounts' | 'credit-cards' | 'purchases'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'accounts' | 'credit-cards' | 'purchases' | 'credits' | 'taxes' | 'services'>('dashboard');
 
   // Transactions State
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -195,25 +195,35 @@ export default function FinancePage() {
                 activeTab === 'dashboard' ? "Finanzas" : 
                 activeTab === 'accounts' ? "Cuentas" : 
                 activeTab === 'credit-cards' ? "Tarjetas de Crédito" :
-                "Compras con Tarjeta"
+                activeTab === 'purchases' ? "Compras con Tarjeta" :
+                activeTab === 'credits' ? "Créditos" :
+                activeTab === 'taxes' ? "Impuestos" :
+                "Servicios"
             }
             description={
               activeTab === 'dashboard' ? "Gestiona tus ingresos y gastos" : 
               activeTab === 'accounts' ? "Administra tus cuentas bancarias y efectivo" :
               activeTab === 'credit-cards' ? "Gestiona tus tarjetas, límites y vencimientos" :
-              "Registra y controla tus compras en cuotas"
+              activeTab === 'purchases' ? "Registra y controla tus compras en cuotas" :
+              activeTab === 'credits' ? "Gestiona tus préstamos y créditos" :
+              activeTab === 'taxes' ? "Controla tus obligaciones tributarias" :
+              "Administra tus servicios recurrentes"
             }
             actionLabel={
               activeTab === 'dashboard' ? "Nueva Transacción" : 
               activeTab === 'accounts' ? "Nueva Cuenta" :
               activeTab === 'credit-cards' ? "Nueva Tarjeta" :
-              "Nueva Compra"
+              activeTab === 'purchases' ? "Nueva Compra" :
+              activeTab === 'credits' ? "Nuevo Crédito" :
+              activeTab === 'taxes' ? "Nuevo Impuesto" :
+              "Nuevo Servicio"
             }
             onAction={() => {
               if (activeTab === 'dashboard') setIsTransactionModalOpen(true);
               else if (activeTab === 'accounts') setIsAccountModalOpen(true);
               else if (activeTab === 'credit-cards') setIsCreditCardModalOpen(true);
-              else setIsPurchaseModalOpen(true);
+              else if (activeTab === 'purchases') setIsPurchaseModalOpen(true);
+              // TODO: Add handlers for new tabs
             }}
           />
 
@@ -267,6 +277,42 @@ export default function FinancePage() {
               >
                 <ShoppingCart className="h-4 w-4" />
                 Compras TC
+              </button>
+              <button
+                onClick={() => setActiveTab('credits')}
+                className={`
+                  flex items-center gap-2 border-b-2 py-4 px-1 text-sm font-medium transition-colors
+                  ${activeTab === 'credits'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-zinc-700 dark:hover:text-gray-300'}
+                `}
+              >
+                <Banknote className="h-4 w-4" />
+                Créditos
+              </button>
+              <button
+                onClick={() => setActiveTab('taxes')}
+                className={`
+                  flex items-center gap-2 border-b-2 py-4 px-1 text-sm font-medium transition-colors
+                  ${activeTab === 'taxes'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-zinc-700 dark:hover:text-gray-300'}
+                `}
+              >
+                <FileText className="h-4 w-4" />
+                Impuestos
+              </button>
+              <button
+                onClick={() => setActiveTab('services')}
+                className={`
+                  flex items-center gap-2 border-b-2 py-4 px-1 text-sm font-medium transition-colors
+                  ${activeTab === 'services'
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-zinc-700 dark:hover:text-gray-300'}
+                `}
+              >
+                <Zap className="h-4 w-4" />
+                Servicios
               </button>
             </nav>
           </div>
@@ -322,6 +368,36 @@ export default function FinancePage() {
                   }}
                   onUpdate={fetchPurchases}
                 />
+              )}
+
+              {activeTab === 'credits' && (
+                <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center dark:border-zinc-700">
+                  <Banknote className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">Créditos y Préstamos</h3>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Próximamente podrás gestionar tus préstamos y créditos aquí.
+                  </p>
+                </div>
+              )}
+
+              {activeTab === 'taxes' && (
+                <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center dark:border-zinc-700">
+                  <FileText className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">Impuestos</h3>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Próximamente podrás controlar tus obligaciones tributarias aquí.
+                  </p>
+                </div>
+              )}
+
+              {activeTab === 'services' && (
+                <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center dark:border-zinc-700">
+                  <Zap className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">Servicios</h3>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Próximamente podrás administrar tus servicios recurrentes aquí.
+                  </p>
+                </div>
               )}
             </div>
           )}
