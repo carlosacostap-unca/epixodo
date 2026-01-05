@@ -1,9 +1,10 @@
 "use client";
 
 import { CreditCard, Calendar, Pencil, Trash2, CalendarRange } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { pb } from "@/lib/pocketbase";
 import { CreditCardStatementsModal } from "./credit-card-statements-modal";
+import { formatDate } from "@/lib/date-utils";
 
 interface CreditCard {
   id: string;
@@ -21,6 +22,37 @@ interface CreditCardsListProps {
 export function CreditCardsList({ cards, onEdit, onUpdate }: CreditCardsListProps) {
   const [statementsCard, setStatementsCard] = useState<CreditCard | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [nextDueDates, setNextDueDates] = useState<Record<string, string | null>>({});
+
+  const fetchDueDates = useCallback(async () => {
+    const dates: Record<string, string | null> = {};
+    const today = new Date().toISOString().split('T')[0];
+
+    await Promise.all(cards.map(async (card) => {
+      try {
+        const records = await pb.collection("credit_card_statements").getList(1, 1, {
+          filter: `card = "${card.id}" && due_date >= "${today}"`,
+          sort: "due_date",
+        });
+        
+        if (records.items.length > 0) {
+          dates[card.id] = records.items[0].due_date;
+        } else {
+          dates[card.id] = null;
+        }
+      } catch (error) {
+        console.error("Error fetching due date for card:", card.id, error);
+        dates[card.id] = null;
+      }
+    }));
+    setNextDueDates(dates);
+  }, [cards]);
+
+  useEffect(() => {
+    if (cards.length > 0) {
+      fetchDueDates();
+    }
+  }, [fetchDueDates]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("¿Estás seguro de que deseas eliminar esta tarjeta?")) return;
@@ -102,7 +134,10 @@ export function CreditCardsList({ cards, onEdit, onUpdate }: CreditCardsListProp
               <div className="flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5 text-gray-400" />
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Gestiona los vencimientos mes a mes
+                  {nextDueDates[card.id] 
+                    ? `Próximo vencimiento: ${formatDate(nextDueDates[card.id]!)}`
+                    : "Sin datos sobre el próximo vencimiento"
+                  }
                 </p>
               </div>
             </div>
@@ -111,7 +146,10 @@ export function CreditCardsList({ cards, onEdit, onUpdate }: CreditCardsListProp
       ))}
       <CreditCardStatementsModal
         isOpen={!!statementsCard}
-        onClose={() => setStatementsCard(null)}
+        onClose={() => {
+          setStatementsCard(null);
+          fetchDueDates();
+        }}
         card={statementsCard}
       />
     </div>
