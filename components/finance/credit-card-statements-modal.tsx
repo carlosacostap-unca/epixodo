@@ -17,6 +17,7 @@ interface CreditCardStatement {
   status: 'pending' | 'paid';
   payment_type?: 'total' | 'partial' | 'minimum';
   paid_amount?: number;
+  payment_date?: string;
 }
 
 interface CreditCardStatementsModalProps {
@@ -44,6 +45,7 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
   const [status, setStatus] = useState<'pending' | 'paid'>("pending");
   const [paymentType, setPaymentType] = useState<'total' | 'partial' | 'minimum'>("total");
   const [paidAmount, setPaidAmount] = useState("");
+  const [paymentDate, setPaymentDate] = useState("");
 
   useEffect(() => {
     if (isOpen && card) {
@@ -62,6 +64,7 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
       setStatus("pending");
       setPaymentType("total");
       setPaidAmount("");
+      setPaymentDate(toInputDate(new Date().toISOString()));
       setEditingId(null);
     }
   }, [isOpen, card]);
@@ -94,6 +97,7 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
     setStatus(stmt.status);
     setPaymentType(stmt.payment_type || "total");
     setPaidAmount(stmt.paid_amount?.toString() || "");
+    setPaymentDate(stmt.payment_date ? toInputDate(stmt.payment_date) : toInputDate(new Date().toISOString()));
   };
 
   const handleCancelEdit = () => {
@@ -105,6 +109,7 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
     setStatus("pending");
     setPaymentType("total");
     setPaidAmount("");
+    setPaymentDate(toInputDate(new Date().toISOString()));
     
     // Reset period to default next month
     const today = new Date();
@@ -135,9 +140,11 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
       if (status === 'paid') {
         data.payment_type = paymentType;
         data.paid_amount = parseFloat(paidAmount) || 0;
+        data.payment_date = fromInputDateToUTC(paymentDate);
       } else {
         data.payment_type = null;
         data.paid_amount = null;
+        data.payment_date = null;
       }
 
       if (editingId) {
@@ -256,7 +263,7 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
           </div>
 
           {status === 'paid' && (
-            <div className="grid gap-4 sm:grid-cols-2 mt-4 pt-4 border-t border-gray-200 dark:border-zinc-700">
+            <div className="grid gap-4 sm:grid-cols-3 mt-4 pt-4 border-t border-gray-200 dark:border-zinc-700">
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400">Tipo de Pago</label>
                 <select
@@ -279,6 +286,16 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
                   onChange={(e) => setPaidAmount(e.target.value)}
                   className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
                   placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400">Fecha de Pago</label>
+                <input
+                  type="date"
+                  required
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
                 />
               </div>
             </div>
