@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { pb } from "@/lib/pocketbase";
 import { Modal } from "@/components/ui/modal";
-import { Loader2, Calendar, Trash2, Plus, AlertCircle } from "lucide-react";
-import { formatDate, fromInputDateToUTC } from "@/lib/date-utils";
+import { Loader2, Calendar, Trash2, Plus, AlertCircle, Pencil, X } from "lucide-react";
+import { formatDate, fromInputDateToUTC, toInputDate } from "@/lib/date-utils";
 
 interface CreditCardStatement {
   id: string;
@@ -33,6 +33,7 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   
   // Form state
   const [period, setPeriod] = useState("");
@@ -61,6 +62,7 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
       setStatus("pending");
       setPaymentType("total");
       setPaidAmount("");
+      setEditingId(null);
     }
   }, [isOpen, card]);
 
@@ -82,7 +84,37 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
     }
   };
 
-  const handleAddStatement = async (e: React.FormEvent) => {
+  const handleEdit = (stmt: CreditCardStatement) => {
+    setEditingId(stmt.id);
+    setPeriod(stmt.period);
+    setClosingDate(toInputDate(stmt.closing_date));
+    setDueDate(toInputDate(stmt.due_date));
+    setTotalAmount(stmt.total_amount.toString());
+    setMinAmount(stmt.min_amount.toString());
+    setStatus(stmt.status);
+    setPaymentType(stmt.payment_type || "total");
+    setPaidAmount(stmt.paid_amount?.toString() || "");
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setClosingDate("");
+    setDueDate("");
+    setTotalAmount("");
+    setMinAmount("");
+    setStatus("pending");
+    setPaymentType("total");
+    setPaidAmount("");
+    
+    // Reset period to default next month
+    const today = new Date();
+    const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const year = nextMonth.getFullYear();
+    const month = String(nextMonth.getMonth() + 1).padStart(2, "0");
+    setPeriod(`${year}-${month}`);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!card) return;
 
@@ -103,18 +135,22 @@ export function CreditCardStatementsModal({ isOpen, onClose, card }: CreditCardS
       if (status === 'paid') {
         data.payment_type = paymentType;
         data.paid_amount = parseFloat(paidAmount) || 0;
+      } else {
+        data.payment_type = null;
+        data.paid_amount = null;
       }
 
-      await pb.collection("credit_card_statements").create(data);
+      if (editingId) {
+        await pb.collection("credit_card_statements").update(editingId, data);
+      } else {
+        await pb.collection("credit_card_statements").create(data);
+      }
       
-      // Reset form (except period, maybe increment it? Nah, just clear dates)
-      setClosingDate("");
-      setDueDate("");
-      
+      handleCancelEdit(); // Reset form
       await fetchStatements();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
-      console.error("Error creating statement:", error);
+      console.error("Error saving statement:", error);
       alert("Error al guardar el resumen. Asegúrate de que la colección 'credit_card_statements' exista.");
     } finally {
       setIsSubmitting(false);
