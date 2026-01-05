@@ -33,6 +33,7 @@ export function CreditCardsList({ cards, onEdit, onUpdate }: CreditCardsListProp
         const records = await pb.collection("credit_card_statements").getList(1, 1, {
           filter: `card = "${card.id}" && due_date >= "${today}"`,
           sort: "due_date",
+          requestKey: null,
         });
         
         if (records.items.length > 0) {
