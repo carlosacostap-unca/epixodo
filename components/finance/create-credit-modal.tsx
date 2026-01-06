@@ -196,7 +196,7 @@ export function CreateCreditModal({ isOpen, onClose, onSuccess, creditToEdit }: 
         lender,
       };
 
-      let record;
+      let record: any;
       if (creditToEdit) {
         record = await pb.collection("credits").update(creditToEdit.id, data);
         
