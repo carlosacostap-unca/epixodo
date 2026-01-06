@@ -14,6 +14,12 @@ import { CreateTransactionModal } from "@/components/finance/create-transaction-
 import { CreateAccountModal } from "@/components/finance/create-account-modal";
 import { CreateCreditCardModal } from "@/components/finance/create-credit-card-modal";
 import { CreateCreditCardPurchaseModal } from "@/components/finance/create-credit-card-purchase-modal";
+import { CreateCreditModal } from "@/components/finance/create-credit-modal";
+import { CreateTaxModal } from "@/components/finance/create-tax-modal";
+import { CreateServiceModal } from "@/components/finance/create-service-modal";
+import { CreditsList } from "@/components/finance/credits-list";
+import { TaxesList } from "@/components/finance/taxes-list";
+import { ServicesList } from "@/components/finance/services-list";
 import { Loader2, ArrowLeft, LayoutDashboard, Wallet, CreditCard, ShoppingCart, Banknote, FileText, Zap } from "lucide-react";
 import Link from "next/link";
 
@@ -42,6 +48,21 @@ export default function FinancePage() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<any>(null);
+
+  // Credits State
+  const [credits, setCredits] = useState<any[]>([]);
+  const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
+  const [editingCredit, setEditingCredit] = useState<any>(null);
+
+  // Taxes State
+  const [taxes, setTaxes] = useState<any[]>([]);
+  const [isTaxModalOpen, setIsTaxModalOpen] = useState(false);
+  const [editingTax, setEditingTax] = useState<any>(null);
+
+  // Services State
+  const [services, setServices] = useState<any[]>([]);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [editingService, setEditingService] = useState<any>(null);
 
   useEffect(() => {
     if (!pb.authStore.isValid) {
@@ -121,13 +142,70 @@ export default function FinancePage() {
     }
   };
 
+  const fetchCredits = async () => {
+    try {
+      const records = await pb.collection("credits").getList(1, 50, {
+        sort: "name",
+        filter: `user = "${pb.authStore.model?.id}"`,
+        requestKey: null,
+      });
+      setCredits(records.items);
+    } catch (error: any) {
+        if (error.status === 404) {
+            console.warn("Credits collection might not exist yet.");
+            setCredits([]);
+        } else {
+            console.error("Error fetching credits:", error);
+        }
+    }
+  };
+
+  const fetchTaxes = async () => {
+    try {
+      const records = await pb.collection("taxes").getList(1, 50, {
+        sort: "name",
+        filter: `user = "${pb.authStore.model?.id}"`,
+        requestKey: null,
+      });
+      setTaxes(records.items);
+    } catch (error: any) {
+        if (error.status === 404) {
+            console.warn("Taxes collection might not exist yet.");
+            setTaxes([]);
+        } else {
+            console.error("Error fetching taxes:", error);
+        }
+    }
+  };
+
+  const fetchServices = async () => {
+    try {
+      const records = await pb.collection("services").getList(1, 50, {
+        sort: "name",
+        filter: `user = "${pb.authStore.model?.id}"`,
+        requestKey: null,
+      });
+      setServices(records.items);
+    } catch (error: any) {
+        if (error.status === 404) {
+            console.warn("Services collection might not exist yet.");
+            setServices([]);
+        } else {
+            console.error("Error fetching services:", error);
+        }
+    }
+  };
+
   const loadData = async () => {
     setIsLoading(true);
     await Promise.all([
         fetchTransactions(), 
         fetchAccounts(), 
         fetchCreditCards(),
-        fetchPurchases()
+        fetchPurchases(),
+        fetchCredits(),
+        fetchTaxes(),
+        fetchServices()
     ]);
     setIsLoading(false);
   };
@@ -160,11 +238,32 @@ export default function FinancePage() {
         }
     });
 
+    pb.collection("credits").subscribe("*", (e) => {
+        if (e.action === "create" || e.action === "update" || e.action === "delete") {
+          fetchCredits();
+        }
+    });
+
+    pb.collection("taxes").subscribe("*", (e) => {
+        if (e.action === "create" || e.action === "update" || e.action === "delete") {
+          fetchTaxes();
+        }
+    });
+
+    pb.collection("services").subscribe("*", (e) => {
+        if (e.action === "create" || e.action === "update" || e.action === "delete") {
+          fetchServices();
+        }
+    });
+
     return () => {
       pb.collection("transactions").unsubscribe();
       pb.collection("accounts").unsubscribe();
       pb.collection("credit_cards").unsubscribe();
       pb.collection("credit_card_purchases").unsubscribe();
+      pb.collection("credits").unsubscribe();
+      pb.collection("taxes").unsubscribe();
+      pb.collection("services").unsubscribe();
     };
   }, []);
 
@@ -223,7 +322,9 @@ export default function FinancePage() {
               else if (activeTab === 'accounts') setIsAccountModalOpen(true);
               else if (activeTab === 'credit-cards') setIsCreditCardModalOpen(true);
               else if (activeTab === 'purchases') setIsPurchaseModalOpen(true);
-              // TODO: Add handlers for new tabs
+              else if (activeTab === 'credits') setIsCreditModalOpen(true);
+              else if (activeTab === 'taxes') setIsTaxModalOpen(true);
+              else if (activeTab === 'services') setIsServiceModalOpen(true);
             }}
           />
 
@@ -371,33 +472,36 @@ export default function FinancePage() {
               )}
 
               {activeTab === 'credits' && (
-                <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center dark:border-zinc-700">
-                  <Banknote className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">Créditos y Préstamos</h3>
-                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                    Próximamente podrás gestionar tus préstamos y créditos aquí.
-                  </p>
-                </div>
+                <CreditsList 
+                  credits={credits}
+                  onEdit={(credit) => {
+                    setEditingCredit(credit);
+                    setIsCreditModalOpen(true);
+                  }}
+                  onUpdate={fetchCredits}
+                />
               )}
 
               {activeTab === 'taxes' && (
-                <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center dark:border-zinc-700">
-                  <FileText className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">Impuestos</h3>
-                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                    Próximamente podrás controlar tus obligaciones tributarias aquí.
-                  </p>
-                </div>
+                <TaxesList 
+                  taxes={taxes}
+                  onEdit={(tax) => {
+                    setEditingTax(tax);
+                    setIsTaxModalOpen(true);
+                  }}
+                  onUpdate={fetchTaxes}
+                />
               )}
 
               {activeTab === 'services' && (
-                <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center dark:border-zinc-700">
-                  <Zap className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">Servicios</h3>
-                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                    Próximamente podrás administrar tus servicios recurrentes aquí.
-                  </p>
-                </div>
+                <ServicesList 
+                  services={services}
+                  onEdit={(service) => {
+                    setEditingService(service);
+                    setIsServiceModalOpen(true);
+                  }}
+                  onUpdate={fetchServices}
+                />
               )}
             </div>
           )}
@@ -448,6 +552,39 @@ export default function FinancePage() {
         onSuccess={fetchPurchases}
         creditCards={creditCards}
         purchaseToEdit={editingPurchase}
+      />
+
+      {/* Credit Modal */}
+      <CreateCreditModal
+        isOpen={isCreditModalOpen}
+        onClose={() => {
+          setIsCreditModalOpen(false);
+          setEditingCredit(null);
+        }}
+        onSuccess={fetchCredits}
+        creditToEdit={editingCredit}
+      />
+
+      {/* Tax Modal */}
+      <CreateTaxModal
+        isOpen={isTaxModalOpen}
+        onClose={() => {
+          setIsTaxModalOpen(false);
+          setEditingTax(null);
+        }}
+        onSuccess={fetchTaxes}
+        taxToEdit={editingTax}
+      />
+
+      {/* Service Modal */}
+      <CreateServiceModal
+        isOpen={isServiceModalOpen}
+        onClose={() => {
+          setIsServiceModalOpen(false);
+          setEditingService(null);
+        }}
+        onSuccess={fetchServices}
+        serviceToEdit={editingService}
       />
     </div>
   );

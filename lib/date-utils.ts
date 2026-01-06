@@ -7,7 +7,7 @@ export const TIMEZONE = process.env.NEXT_PUBLIC_TIMEZONE || 'UTC';
 export function formatDate(isoString: string): string {
   if (!isoString) return '';
   const date = new Date(isoString);
-  return new Intl.DateTimeFormat('es-UY', {
+  return new Intl.DateTimeFormat('es-AR', {
     timeZone: TIMEZONE,
     year: 'numeric',
     month: '2-digit',
@@ -121,7 +121,7 @@ export function isOverdue(isoString: string, completed: boolean): boolean {
 export function formatDateTime(isoString: string): string {
   if (!isoString) return '';
   const date = new Date(isoString);
-  return new Intl.DateTimeFormat('es-UY', {
+  return new Intl.DateTimeFormat('es-AR', {
     timeZone: TIMEZONE,
     year: 'numeric',
     month: '2-digit',
