@@ -1,21 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { loadWorkspace, saveWorkspace } from "../lib/task-storage";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  createProject,
+  loadRemoteWorkspace,
+  loadWorkspace,
+  saveRemoteWorkspace,
+  saveWorkspace,
+} from "../lib/task-storage";
+import {
+  createSubject,
   emptyWorkspace,
+  getAvailableParentTasks,
   getCompletedTasks,
   getInboxTasks,
-  getProjectTasks,
+  getSubjectDescendantIds,
+  getSubjectTasks,
+  getTaskDescendantIds,
   getTodayDateOnly,
   getTodayTasks,
   getUnplannedDeadlineTasks,
   getUpcomingTasks,
   getWaitingTasks,
   normalizeTaskDraft,
+  uniqueIds,
   updateTaskStatus,
-  type Project,
+  type Subject,
+  type SubjectHorizon,
   type Task,
   type TaskDraft,
   type TaskPriority,
@@ -24,27 +34,106 @@ import {
 } from "../lib/tasks";
 
 type TaskPatch = Partial<
-  Pick<Task, "title" | "notes" | "projectId" | "hacerEl" | "venceEl" | "priority" | "status">
+  Pick<
+    Task,
+    | "title"
+    | "notes"
+    | "subjectIds"
+    | "parentTaskId"
+    | "hacerEl"
+    | "venceEl"
+    | "priority"
+    | "status"
+  >
 >;
 
 export function useTaskWorkspace() {
   const [workspace, setWorkspace] = useState<WorkspaceData>(() => emptyWorkspace());
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
   const today = getTodayDateOnly();
 
   useEffect(() => {
-    const loadTimer = window.setTimeout(() => {
-      setWorkspace(loadWorkspace());
-      setIsLoaded(true);
-    }, 0);
+    let isCancelled = false;
 
-    return () => window.clearTimeout(loadTimer);
+    async function hydrateWorkspace() {
+      const localWorkspace = loadWorkspace();
+
+      if (localWorkspace.tasks.length > 0 || localWorkspace.subjects.length > 0) {
+        setWorkspace(localWorkspace);
+      }
+
+      try {
+        const remoteWorkspace = await loadRemoteWorkspace();
+        const hasRemoteData =
+          remoteWorkspace.tasks.length > 0 || remoteWorkspace.subjects.length > 0;
+        const hasLocalData =
+          localWorkspace.tasks.length > 0 || localWorkspace.subjects.length > 0;
+        const nextWorkspace = hasRemoteData ? remoteWorkspace : localWorkspace;
+
+        if (isCancelled) {
+          return;
+        }
+
+        setWorkspace(nextWorkspace);
+        setSyncError(null);
+        setIsLoaded(true);
+
+        if (!hasRemoteData && hasLocalData) {
+          await saveRemoteWorkspace(localWorkspace);
+        }
+      } catch (error) {
+        if (isCancelled) {
+          return;
+        }
+
+        setSyncError(
+          error instanceof Error ? error.message : "No se pudo conectar con PocketBase.",
+        );
+        setIsLoaded(true);
+      }
+    }
+
+    hydrateWorkspace();
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (isLoaded) {
-      saveWorkspace(workspace);
+    if (!isLoaded) {
+      return;
     }
+
+    saveWorkspace(workspace);
+
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+
+    saveTimerRef.current = window.setTimeout(async () => {
+      setIsSaving(true);
+
+      try {
+        await saveRemoteWorkspace(workspace);
+        setSyncError(null);
+      } catch (error) {
+        setSyncError(
+          error instanceof Error ? error.message : "No se pudo sincronizar con PocketBase.",
+        );
+      } finally {
+        setIsSaving(false);
+      }
+    }, 500);
+
+    return () => {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+      }
+    };
   }, [isLoaded, workspace]);
 
   const views = useMemo(
@@ -79,13 +168,22 @@ export function useTaskWorkspace() {
         }
 
         const nextStatus = patch.status ?? task.status;
+        const descendantTaskIds = new Set(getTaskDescendantIds(current.tasks, task.id));
+        const requestedParentTaskId =
+          "parentTaskId" in patch ? patch.parentTaskId || null : task.parentTaskId;
+        const safeParentTaskId =
+          requestedParentTaskId &&
+          requestedParentTaskId !== task.id &&
+          !descendantTaskIds.has(requestedParentTaskId)
+            ? requestedParentTaskId
+            : null;
         const updated = {
           ...task,
           ...patch,
           title: patch.title?.trim() ?? task.title,
           notes: patch.notes ?? task.notes,
-          projectId:
-            "projectId" in patch ? patch.projectId || null : task.projectId,
+          subjectIds: "subjectIds" in patch ? uniqueIds(patch.subjectIds) : task.subjectIds,
+          parentTaskId: safeParentTaskId,
           hacerEl: "hacerEl" in patch ? patch.hacerEl || null : task.hacerEl,
           venceEl: "venceEl" in patch ? patch.venceEl || null : task.venceEl,
           updatedAt: new Date().toISOString(),
@@ -116,43 +214,97 @@ export function useTaskWorkspace() {
   function deleteTask(taskId: string) {
     setWorkspace((current) => ({
       ...current,
-      tasks: current.tasks.filter((task) => task.id !== taskId),
+      tasks: current.tasks
+        .filter((task) => task.id !== taskId)
+        .map((task) =>
+          task.parentTaskId === taskId ? { ...task, parentTaskId: null } : task,
+        ),
     }));
   }
 
-  function addProject(name: string) {
+  function addSubject(
+    name: string,
+    horizon: SubjectHorizon = "none",
+    parentSubjectId: string | null = null,
+  ) {
     if (!name.trim()) {
       return;
     }
 
     setWorkspace((current) => ({
       ...current,
-      projects: [...current.projects, createProject(name)],
+      subjects: [...current.subjects, createSubject(name, horizon, parentSubjectId)],
     }));
   }
 
-  function renameProject(projectId: string, name: string) {
+  function renameSubject(subjectId: string, name: string) {
     if (!name.trim()) {
       return;
     }
 
     setWorkspace((current) => ({
       ...current,
-      projects: current.projects.map((project) =>
-        project.id === projectId
-          ? { ...project, name: name.trim(), updatedAt: new Date().toISOString() }
-          : project,
+      subjects: current.subjects.map((subject) =>
+        subject.id === subjectId
+          ? { ...subject, name: name.trim(), updatedAt: new Date().toISOString() }
+          : subject,
       ),
     }));
   }
 
-  function getTasksForProject(projectId: string) {
-    return getProjectTasks(workspace.tasks, projectId);
+  function setSubjectHorizon(subjectId: string, horizon: SubjectHorizon) {
+    setWorkspace((current) => ({
+      ...current,
+      subjects: current.subjects.map((subject) =>
+        subject.id === subjectId
+          ? { ...subject, horizon, updatedAt: new Date().toISOString() }
+          : subject,
+      ),
+    }));
+  }
+
+  function setSubjectParent(subjectId: string, parentSubjectId: string | null) {
+    setWorkspace((current) => {
+      const blockedIds = new Set([
+        subjectId,
+        ...getSubjectDescendantIds(current.subjects, subjectId),
+      ]);
+      const safeParentId =
+        parentSubjectId && !blockedIds.has(parentSubjectId) ? parentSubjectId : null;
+
+      return {
+        ...current,
+        subjects: current.subjects.map((subject) =>
+          subject.id === subjectId
+            ? { ...subject, parentSubjectId: safeParentId, updatedAt: new Date().toISOString() }
+            : subject,
+        ),
+      };
+    });
+  }
+
+  function getTasksForSubject(subjectId: string) {
+    return getSubjectTasks(workspace.tasks, workspace.subjects, subjectId);
+  }
+
+  function getAvailableParentTasksForTask(taskId: string) {
+    return getAvailableParentTasks(workspace.tasks, taskId);
+  }
+
+  function getAvailableParentSubjects(subjectId: string | null = null) {
+    if (!subjectId) {
+      return workspace.subjects;
+    }
+
+    const blockedIds = new Set([subjectId, ...getSubjectDescendantIds(workspace.subjects, subjectId)]);
+    return workspace.subjects.filter((subject) => !blockedIds.has(subject.id));
   }
 
   return {
     ...workspace,
     isLoaded,
+    isSaving,
+    syncError,
     today,
     views,
     addTask,
@@ -160,11 +312,15 @@ export function useTaskWorkspace() {
     setTaskStatus,
     setTaskPriority,
     deleteTask,
-    addProject,
-    renameProject,
-    getTasksForProject,
+    addSubject,
+    renameSubject,
+    setSubjectHorizon,
+    setSubjectParent,
+    getTasksForSubject,
+    getAvailableParentTasksForTask,
+    getAvailableParentSubjects,
   };
 }
 
 export type TaskWorkspace = ReturnType<typeof useTaskWorkspace>;
-export type { Project, Task };
+export type { Subject, Task };

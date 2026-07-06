@@ -4,9 +4,13 @@ export type TaskStatus = "pending" | "in_progress" | "waiting" | "completed";
 
 export type TaskPriority = "low" | "normal" | "high";
 
-export type Project = {
+export type SubjectHorizon = "short" | "medium" | "long" | "none";
+
+export type Subject = {
   id: string;
   name: string;
+  parentSubjectId: string | null;
+  horizon: SubjectHorizon;
   createdAt: string;
   updatedAt: string;
 };
@@ -16,7 +20,8 @@ export type Task = {
   title: string;
   notes: string;
   status: TaskStatus;
-  projectId: string | null;
+  subjectIds: string[];
+  parentTaskId: string | null;
   hacerEl: DateOnly | null;
   venceEl: DateOnly | null;
   priority: TaskPriority;
@@ -29,7 +34,8 @@ export type TaskDraft = {
   title: string;
   notes?: string;
   status?: TaskStatus;
-  projectId?: string | null;
+  subjectIds?: string[];
+  parentTaskId?: string | null;
   hacerEl?: DateOnly | null;
   venceEl?: DateOnly | null;
   priority?: TaskPriority;
@@ -37,7 +43,12 @@ export type TaskDraft = {
 
 export type WorkspaceData = {
   tasks: Task[];
-  projects: Project[];
+  subjects: Subject[];
+};
+
+export type TaskTreeItem = {
+  task: Task;
+  depth: number;
 };
 
 export const taskStatuses: { value: TaskStatus; label: string }[] = [
@@ -53,10 +64,17 @@ export const taskPriorities: { value: TaskPriority; label: string }[] = [
   { value: "high", label: "Alta" },
 ];
 
+export const subjectHorizons: { value: SubjectHorizon; label: string }[] = [
+  { value: "short", label: "Corto plazo" },
+  { value: "medium", label: "Mediano plazo" },
+  { value: "long", label: "Largo plazo" },
+  { value: "none", label: "Sin plazo" },
+];
+
 export function emptyWorkspace(): WorkspaceData {
   return {
     tasks: [],
-    projects: [],
+    subjects: [],
   };
 }
 
@@ -93,6 +111,10 @@ export function isActiveTask(task: Task): boolean {
   return task.status !== "completed";
 }
 
+export function uniqueIds(ids: string[] | undefined): string[] {
+  return Array.from(new Set((ids ?? []).filter(Boolean)));
+}
+
 export function normalizeTaskDraft(draft: TaskDraft, now = new Date()): Task {
   const timestamp = now.toISOString();
 
@@ -101,7 +123,8 @@ export function normalizeTaskDraft(draft: TaskDraft, now = new Date()): Task {
     title: draft.title.trim(),
     notes: draft.notes?.trim() ?? "",
     status: draft.status ?? "pending",
-    projectId: draft.projectId || null,
+    subjectIds: uniqueIds(draft.subjectIds),
+    parentTaskId: draft.parentTaskId || null,
     hacerEl: draft.hacerEl || null,
     venceEl: draft.venceEl || null,
     priority: draft.priority ?? "normal",
@@ -111,15 +134,87 @@ export function normalizeTaskDraft(draft: TaskDraft, now = new Date()): Task {
   };
 }
 
-export function createProject(name: string, now = new Date()): Project {
+export function createSubject(
+  name: string,
+  horizon: SubjectHorizon = "none",
+  parentSubjectId: string | null = null,
+  now = new Date(),
+): Subject {
   const timestamp = now.toISOString();
 
   return {
-    id: createId("project"),
+    id: createId("subject"),
     name: name.trim(),
+    parentSubjectId: parentSubjectId || null,
+    horizon,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+}
+
+export function getHorizonLabel(horizon: SubjectHorizon) {
+  return subjectHorizons.find((item) => item.value === horizon)?.label ?? "Sin plazo";
+}
+
+export function getSubjectDescendantIds(subjects: Subject[], subjectId: string): string[] {
+  const descendants: string[] = [];
+  const queue = [subjectId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    const children = subjects.filter((subject) => subject.parentSubjectId === currentId);
+
+    for (const child of children) {
+      descendants.push(child.id);
+      queue.push(child.id);
+    }
+  }
+
+  return descendants;
+}
+
+export function getSubjectAndDescendantIds(subjects: Subject[], subjectId: string): string[] {
+  return [subjectId, ...getSubjectDescendantIds(subjects, subjectId)];
+}
+
+export function getSubjectPath(subjects: Subject[], subjectId: string | null): string {
+  if (!subjectId) {
+    return "Sin asunto";
+  }
+
+  const byId = new Map(subjects.map((subject) => [subject.id, subject]));
+  const path: string[] = [];
+  let current = byId.get(subjectId);
+
+  while (current) {
+    path.unshift(current.name);
+    current = current.parentSubjectId ? byId.get(current.parentSubjectId) : undefined;
+  }
+
+  return path.length > 0 ? path.join(" / ") : "Asunto";
+}
+
+export function getTaskDescendantIds(tasks: Task[], taskId: string): string[] {
+  const descendants: string[] = [];
+  const queue = [taskId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    const children = tasks.filter((task) => task.parentTaskId === currentId);
+
+    for (const child of children) {
+      descendants.push(child.id);
+      queue.push(child.id);
+    }
+  }
+
+  return descendants;
+}
+
+export function getAvailableParentTasks(tasks: Task[], taskId: string): Task[] {
+  const excludedIds = new Set([taskId, ...getTaskDescendantIds(tasks, taskId)]);
+
+  return sortedTasks(tasks.filter((task) => !excludedIds.has(task.id)));
 }
 
 export function sortedTasks(tasks: Task[]): Task[] {
@@ -148,6 +243,38 @@ export function sortedTasks(tasks: Task[]): Task[] {
   });
 }
 
+export function taskTreeItems(tasks: Task[]): TaskTreeItem[] {
+  const visibleIds = new Set(tasks.map((task) => task.id));
+  const childrenByParent = new Map<string, Task[]>();
+
+  for (const task of tasks) {
+    if (task.parentTaskId && visibleIds.has(task.parentTaskId)) {
+      const siblings = childrenByParent.get(task.parentTaskId) ?? [];
+      siblings.push(task);
+      childrenByParent.set(task.parentTaskId, siblings);
+    }
+  }
+
+  const roots = sortedTasks(
+    tasks.filter((task) => !task.parentTaskId || !visibleIds.has(task.parentTaskId)),
+  );
+  const items: TaskTreeItem[] = [];
+
+  function walk(task: Task, depth: number) {
+    items.push({ task, depth });
+
+    for (const child of sortedTasks(childrenByParent.get(task.id) ?? [])) {
+      walk(child, depth + 1);
+    }
+  }
+
+  for (const root of roots) {
+    walk(root, 0);
+  }
+
+  return items;
+}
+
 export function getTodayTasks(tasks: Task[], today = getTodayDateOnly()): Task[] {
   return sortedTasks(
     tasks.filter(
@@ -162,7 +289,11 @@ export function getInboxTasks(tasks: Task[]): Task[] {
   return sortedTasks(
     tasks.filter(
       (task) =>
-        isActiveTask(task) && !task.projectId && !task.hacerEl && !task.venceEl,
+        isActiveTask(task) &&
+        task.subjectIds.length === 0 &&
+        !task.parentTaskId &&
+        !task.hacerEl &&
+        !task.venceEl,
     ),
   );
 }
@@ -190,9 +321,17 @@ export function getCompletedTasks(tasks: Task[]): Task[] {
     .sort((a, b) => (b.completedAt ?? b.updatedAt).localeCompare(a.completedAt ?? a.updatedAt));
 }
 
-export function getProjectTasks(tasks: Task[], projectId: string): Task[] {
+export function getSubjectTasks(
+  tasks: Task[],
+  subjects: Subject[],
+  subjectId: string,
+): Task[] {
+  const subjectIds = new Set(getSubjectAndDescendantIds(subjects, subjectId));
+
   return sortedTasks(
-    tasks.filter((task) => isActiveTask(task) && task.projectId === projectId),
+    tasks.filter(
+      (task) => isActiveTask(task) && task.subjectIds.some((id) => subjectIds.has(id)),
+    ),
   );
 }
 

@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "openspec": "openspec",
+    "schema:pocketbase": "node scripts/ensure_workspaces_collection.mjs",
     "lint": "eslint"
   },
   "dependencies": {

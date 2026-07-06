@@ -1,0 +1,186 @@
+import {
+  emptyWorkspace,
+  type Subject,
+  type SubjectHorizon,
+  type Task,
+  type WorkspaceData,
+} from "./tasks";
+
+type LegacyProject = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type LegacyTask = Omit<Task, "subjectIds" | "parentTaskId"> & {
+  projectId?: string | null;
+  subjectIds?: string[];
+  parentTaskId?: string | null;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSubjectHorizon(value: unknown): value is SubjectHorizon {
+  return value === "short" || value === "medium" || value === "long" || value === "none";
+}
+
+function uniqueStringIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(new Set(value.filter((item): item is string => typeof item === "string")));
+}
+
+function toTask(value: unknown): Task | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.title !== "string" ||
+    typeof value.notes !== "string" ||
+    typeof value.status !== "string" ||
+    typeof value.priority !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string"
+  ) {
+    return null;
+  }
+
+  const legacy = value as LegacyTask;
+  const subjectIds = uniqueStringIds(legacy.subjectIds);
+  const legacyProjectId = typeof legacy.projectId === "string" ? legacy.projectId : null;
+
+  return {
+    id: legacy.id,
+    title: legacy.title,
+    notes: legacy.notes,
+    status: legacy.status as Task["status"],
+    subjectIds: subjectIds.length > 0 ? subjectIds : legacyProjectId ? [legacyProjectId] : [],
+    parentTaskId: typeof legacy.parentTaskId === "string" ? legacy.parentTaskId : null,
+    hacerEl:
+      "hacerEl" in legacy
+        ? typeof legacy.hacerEl === "string" || legacy.hacerEl === null
+          ? legacy.hacerEl
+          : null
+        : null,
+    venceEl:
+      "venceEl" in legacy
+        ? typeof legacy.venceEl === "string" || legacy.venceEl === null
+          ? legacy.venceEl
+          : null
+        : null,
+    priority: legacy.priority as Task["priority"],
+    createdAt: legacy.createdAt,
+    updatedAt: legacy.updatedAt,
+    completedAt:
+      "completedAt" in legacy
+        ? typeof legacy.completedAt === "string" || legacy.completedAt === null
+          ? legacy.completedAt
+          : null
+        : null,
+  };
+}
+
+function toSubject(value: unknown): Subject | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    name: value.name,
+    parentSubjectId: typeof value.parentSubjectId === "string" ? value.parentSubjectId : null,
+    horizon: isSubjectHorizon(value.horizon) ? value.horizon : "none",
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
+}
+
+function legacyProjectToSubject(value: unknown): Subject | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string"
+  ) {
+    return null;
+  }
+
+  const project = value as LegacyProject;
+
+  return {
+    id: project.id,
+    name: project.name,
+    parentSubjectId: null,
+    horizon: "none",
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+  };
+}
+
+export function normalizeWorkspaceData(value: unknown): WorkspaceData {
+  if (!isRecord(value) || !Array.isArray(value.tasks)) {
+    return emptyWorkspace();
+  }
+
+  const subjects = Array.isArray(value.subjects)
+    ? value.subjects.map(toSubject).filter((subject): subject is Subject => Boolean(subject))
+    : Array.isArray(value.projects)
+      ? value.projects
+          .map(legacyProjectToSubject)
+          .filter((subject): subject is Subject => Boolean(subject))
+      : [];
+  const subjectIds = new Set(subjects.map((subject) => subject.id));
+  const taskIds = new Set<string>();
+  const tasks = value.tasks
+    .map(toTask)
+    .filter((task): task is Task => Boolean(task))
+    .map((task) => {
+      taskIds.add(task.id);
+      return {
+        ...task,
+        subjectIds: task.subjectIds.filter((id) => subjectIds.has(id)),
+      };
+    })
+    .map((task) => ({
+      ...task,
+      parentTaskId: task.parentTaskId && taskIds.has(task.parentTaskId) ? task.parentTaskId : null,
+    }));
+
+  return { tasks, subjects };
+}
+
+export function parseWorkspaceJson(raw: string | null): WorkspaceData {
+  if (!raw) {
+    return emptyWorkspace();
+  }
+
+  try {
+    return normalizeWorkspaceData(JSON.parse(raw));
+  } catch {
+    return emptyWorkspace();
+  }
+}
+
+export function hasWorkspaceContent(workspace: WorkspaceData): boolean {
+  return workspace.tasks.length > 0 || workspace.subjects.length > 0;
+}

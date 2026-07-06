@@ -1,70 +1,14 @@
-import { emptyWorkspace, type Project, type Task, type WorkspaceData } from "./tasks";
+import type { WorkspaceData } from "./tasks";
+import { parseWorkspaceJson } from "./workspace-codec";
 
 const STORAGE_KEY = "epixodo.personal-task-manager.v1";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isTask(value: unknown): value is Task {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.title === "string" &&
-    typeof value.notes === "string" &&
-    typeof value.status === "string" &&
-    ("projectId" in value ? typeof value.projectId === "string" || value.projectId === null : true) &&
-    ("hacerEl" in value ? typeof value.hacerEl === "string" || value.hacerEl === null : true) &&
-    ("venceEl" in value ? typeof value.venceEl === "string" || value.venceEl === null : true) &&
-    typeof value.priority === "string" &&
-    typeof value.createdAt === "string" &&
-    typeof value.updatedAt === "string"
-  );
-}
-
-function isProject(value: unknown): value is Project {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.name === "string" &&
-    typeof value.createdAt === "string" &&
-    typeof value.updatedAt === "string"
-  );
-}
-
-function parseWorkspace(raw: string | null): WorkspaceData {
-  if (!raw) {
-    return emptyWorkspace();
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(raw);
-
-    if (!isRecord(parsed) || !Array.isArray(parsed.tasks) || !Array.isArray(parsed.projects)) {
-      return emptyWorkspace();
-    }
-
-    const tasks = parsed.tasks.filter(isTask);
-    const projects = parsed.projects.filter(isProject);
-
-    return { tasks, projects };
-  } catch {
-    return emptyWorkspace();
-  }
-}
-
 export function loadWorkspace(): WorkspaceData {
   if (typeof window === "undefined") {
-    return emptyWorkspace();
+    return { tasks: [], subjects: [] };
   }
 
-  return parseWorkspace(window.localStorage.getItem(STORAGE_KEY));
+  return parseWorkspaceJson(window.localStorage.getItem(STORAGE_KEY));
 }
 
 export function saveWorkspace(workspace: WorkspaceData) {
@@ -72,5 +16,35 @@ export function saveWorkspace(workspace: WorkspaceData) {
     return;
   }
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace));
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ tasks: workspace.tasks, subjects: workspace.subjects }),
+  );
+}
+
+async function requestWorkspace(method: "GET" | "PUT", workspace?: WorkspaceData) {
+  const response = await fetch("/api/workspace", {
+    method,
+    headers: workspace ? { "Content-Type": "application/json" } : undefined,
+    body: workspace ? JSON.stringify(workspace) : undefined,
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(
+      typeof payload?.error === "string"
+        ? payload.error
+        : "No se pudo sincronizar con PocketBase.",
+    );
+  }
+
+  return (await response.json()) as WorkspaceData;
+}
+
+export function loadRemoteWorkspace() {
+  return requestWorkspace("GET");
+}
+
+export function saveRemoteWorkspace(workspace: WorkspaceData) {
+  return requestWorkspace("PUT", workspace);
 }
