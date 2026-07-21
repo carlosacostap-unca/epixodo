@@ -9,11 +9,13 @@ import {
 } from "../lib/task-storage";
 import {
   createSubject,
+  createSubjectEvent,
   createSubjectPhase,
   emptyWorkspace,
   getAvailableParentTasks,
   getCompletedTasks,
   getInboxTasks,
+  isValidSubjectEventDraft,
   getPhaseDateRangeError,
   getSubjectDescendantIds,
   getSubjectTasks,
@@ -25,13 +27,17 @@ import {
   getWaitingTasks,
   normalizeTaskDraft,
   normalizeTaskPhaseAssignment,
+  patchSubjectEvent,
   reorderSubjectPhases,
   removePhaseFromWorkspace,
+  removeSubjectEventFromWorkspace,
   removeSubjectFromWorkspace,
   sortedSubjectPhases,
   uniqueIds,
   updateTaskStatus,
   type Subject,
+  type SubjectEvent,
+  type SubjectEventDraft,
   type SubjectHorizon,
   type SubjectPhase,
   type SubjectPhaseDraft,
@@ -64,6 +70,8 @@ type PhasePatch = Partial<
   >
 >;
 
+type SubjectEventPatch = Partial<SubjectEventDraft>;
+
 export function useTaskWorkspace() {
   const [workspace, setWorkspace] = useState<WorkspaceData>(() => emptyWorkspace());
   const [isLoaded, setIsLoaded] = useState(false);
@@ -81,7 +89,8 @@ export function useTaskWorkspace() {
       if (
         localWorkspace.tasks.length > 0 ||
         localWorkspace.subjects.length > 0 ||
-        localWorkspace.phases.length > 0
+        localWorkspace.phases.length > 0 ||
+        localWorkspace.subjectEvents.length > 0
       ) {
         setWorkspace(localWorkspace);
       }
@@ -91,11 +100,13 @@ export function useTaskWorkspace() {
         const hasRemoteData =
           remoteWorkspace.tasks.length > 0 ||
           remoteWorkspace.subjects.length > 0 ||
-          remoteWorkspace.phases.length > 0;
+          remoteWorkspace.phases.length > 0 ||
+          remoteWorkspace.subjectEvents.length > 0;
         const hasLocalData =
           localWorkspace.tasks.length > 0 ||
           localWorkspace.subjects.length > 0 ||
-          localWorkspace.phases.length > 0;
+          localWorkspace.phases.length > 0 ||
+          localWorkspace.subjectEvents.length > 0;
         const nextWorkspace = hasRemoteData ? remoteWorkspace : localWorkspace;
 
         if (isCancelled) {
@@ -414,6 +425,50 @@ export function useTaskWorkspace() {
     setWorkspace((current) => removePhaseFromWorkspace(current, phaseId));
   }
 
+  function addSubjectEvent(subjectId: string, draft: SubjectEventDraft) {
+    if (!isValidSubjectEventDraft(draft)) {
+      return;
+    }
+
+    setWorkspace((current) => {
+      if (!current.subjects.some((subject) => subject.id === subjectId)) {
+        return current;
+      }
+
+      return {
+        ...current,
+        subjectEvents: [...current.subjectEvents, createSubjectEvent(subjectId, draft)],
+      };
+    });
+  }
+
+  function updateSubjectEvent(eventId: string, patch: SubjectEventPatch) {
+    setWorkspace((current) => {
+      const event = current.subjectEvents.find((item) => item.id === eventId);
+
+      if (!event) {
+        return current;
+      }
+
+      const updated = patchSubjectEvent(event, patch);
+
+      if (!updated) {
+        return current;
+      }
+
+      return {
+        ...current,
+        subjectEvents: current.subjectEvents.map((item) =>
+          item.id === eventId ? updated : item,
+        ),
+      };
+    });
+  }
+
+  function deleteSubjectEvent(eventId: string) {
+    setWorkspace((current) => removeSubjectEventFromWorkspace(current, eventId));
+  }
+
   function getTasksForSubject(subjectId: string) {
     return getSubjectTasks(workspace.tasks, workspace.subjects, subjectId);
   }
@@ -452,6 +507,9 @@ export function useTaskWorkspace() {
     patchPhase,
     movePhase,
     deletePhase,
+    addSubjectEvent,
+    updateSubjectEvent,
+    deleteSubjectEvent,
     getTasksForSubject,
     getAvailableParentTasksForTask,
     getAvailableParentSubjects,
@@ -459,4 +517,4 @@ export function useTaskWorkspace() {
 }
 
 export type TaskWorkspace = ReturnType<typeof useTaskWorkspace>;
-export type { Subject, SubjectPhase, Task };
+export type { Subject, SubjectEvent, SubjectPhase, Task };

@@ -5,7 +5,7 @@ const STORAGE_KEY = "epixodo.personal-task-manager.v1";
 
 export function loadWorkspace(): WorkspaceData {
   if (typeof window === "undefined") {
-    return { tasks: [], subjects: [], phases: [] };
+    return { tasks: [], subjects: [], phases: [], subjectEvents: [] };
   }
 
   return parseWorkspaceJson(window.localStorage.getItem(STORAGE_KEY));
@@ -22,6 +22,7 @@ export function saveWorkspace(workspace: WorkspaceData) {
       tasks: workspace.tasks,
       subjects: workspace.subjects,
       phases: workspace.phases,
+      subjectEvents: workspace.subjectEvents,
     }),
   );
 }

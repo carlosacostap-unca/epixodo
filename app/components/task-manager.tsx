@@ -10,12 +10,17 @@ import {
   getSubjectPath,
   getTaskAvailablePhases,
   isActiveTask,
+  isValidSubjectEventDraft,
   subjectHorizons,
   sortedSubjectPhases,
+  sortedSubjectEvents,
   taskPriorities,
   taskStatuses,
   taskTreeItems,
   type Subject,
+  type SubjectEvent,
+  type SubjectEventDraft,
+  type SubjectEventKind,
   type SubjectHorizon,
   type SubjectPhase,
   type SubjectPhaseDraft,
@@ -26,7 +31,7 @@ import {
 } from "../lib/tasks";
 
 type ViewKey = "today" | "inbox" | "upcoming" | "waiting" | "completed" | "subjects";
-type SubjectViewMode = "tree" | "horizon";
+type SubjectViewMode = "folders" | "horizon";
 type EditableTaskPatch = Partial<
   Pick<
     Task,
@@ -63,7 +68,7 @@ const viewDescriptions: Record<ViewKey, string> = {
   upcoming: "El trabajo que se acerca en los próximos días.",
   waiting: "Tareas detenidas por una respuesta o condición externa.",
   completed: "El registro de lo que ya resolviste.",
-  subjects: "Organiza el trabajo por contexto, horizonte y fases.",
+  subjects: "Recorre tus asuntos como carpetas y abre cada nivel para ver su trabajo.",
 };
 
 function ViewIcon({ view }: { view: ViewKey }) {
@@ -1331,6 +1336,285 @@ function SubjectEditModal({
   );
 }
 
+function SubjectEventFormModal({
+  isOpen,
+  event,
+  defaultKind,
+  subjectName,
+  onSave,
+  onClose,
+}: {
+  isOpen: boolean;
+  event: SubjectEvent | null;
+  defaultKind: SubjectEventKind;
+  subjectName: string;
+  onSave: (draft: SubjectEventDraft) => void;
+  onClose: () => void;
+}) {
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleEscape(keyEvent: KeyboardEvent) {
+      if (keyEvent.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  function handleSubmit(submitEvent: FormEvent<HTMLFormElement>) {
+    submitEvent.preventDefault();
+    const data = new FormData(submitEvent.currentTarget);
+    const draft: SubjectEventDraft = {
+      kind: String(data.get("kind")) as SubjectEventKind,
+      description: String(data.get("description") ?? ""),
+      date: String(data.get("date") ?? ""),
+    };
+
+    if (!isValidSubjectEventDraft(draft)) {
+      setFormError("Completa una descripción y selecciona una fecha válida.");
+      return;
+    }
+
+    onSave(draft);
+    setFormError(null);
+    onClose();
+  }
+
+  function handleClose() {
+    setFormError(null);
+    onClose();
+  }
+
+  const initialKind = event?.kind ?? defaultKind;
+
+  return (
+    <div
+      className="fixed inset-0 z-[75] grid place-items-center bg-[#050812]/80 px-4 py-6 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="subject-event-form-title"
+    >
+      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-[#315177] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.55)]">
+        <div className="flex items-center justify-between gap-4 border-b border-[#293852] px-4 py-4 sm:px-5">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">
+              {event ? "Editar fecha clave" : "Nueva fecha clave"}
+            </p>
+            <h3 id="subject-event-form-title" className="mt-1 truncate text-xl font-black text-[#eef4ff]">
+              {subjectName}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Cerrar"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+          >
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="grid gap-5 p-4 sm:p-5">
+          <fieldset className="grid gap-2">
+            <legend className="mb-1 text-xs font-black uppercase tracking-[0.12em] text-[#9aabc5]">
+              Tipo
+            </legend>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                ["milestone", "Hito", "Un logro o punto de referencia"],
+                ["deadline", "Vencimiento", "Una entrega o fecha límite"],
+              ] as const).map(([value, label, hint]) => (
+                <label key={value} className="cursor-pointer">
+                  <input
+                    type="radio"
+                    name="kind"
+                    value={value}
+                    defaultChecked={initialKind === value}
+                    className="peer sr-only"
+                  />
+                  <span className="block rounded-xl border border-[#344562] bg-[#0d1422] p-3 transition peer-checked:border-[#82afff] peer-checked:bg-[#152a48] peer-focus-visible:ring-2 peer-focus-visible:ring-[#82afff]/40">
+                    <span className="block text-sm font-black text-[#eef4ff]">{label}</span>
+                    <span className="mt-1 block text-xs text-[#8fa0bd]">{hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <FieldLabel label="Descripción">
+            <textarea
+              name="description"
+              defaultValue={event?.description ?? ""}
+              placeholder="Ej. Presentación aprobada por el cliente"
+              rows={4}
+              maxLength={500}
+              autoFocus
+              required
+              className={`${controlClass} min-h-28 resize-y py-3`}
+            />
+          </FieldLabel>
+
+          <FieldLabel label="Fecha">
+            <input
+              type="date"
+              name="date"
+              defaultValue={event?.date ?? ""}
+              required
+              className={controlClass}
+            />
+          </FieldLabel>
+
+          {formError ? (
+            <p role="alert" className="rounded-lg border border-[#6f3c35] bg-[#2e1716] px-3 py-2 text-sm font-bold text-[#ff9d88]">
+              {formError}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
+            <button type="button" onClick={handleClose} className="h-10 rounded-lg border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238]">
+              Cancelar
+            </button>
+            <button type="submit" className="h-10 rounded-lg border border-[#82afff] bg-[#82afff] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40">
+              {event ? "Guardar cambios" : initialKind === "milestone" ? "Crear hito" : "Crear vencimiento"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SubjectEventSection({
+  subject,
+  events,
+  onAddEvent,
+  onPatchEvent,
+  onDeleteEvent,
+}: {
+  subject: Subject;
+  events: SubjectEvent[];
+  onAddEvent: (subjectId: string, draft: SubjectEventDraft) => void;
+  onPatchEvent: (eventId: string, patch: Partial<SubjectEventDraft>) => void;
+  onDeleteEvent: (eventId: string) => void;
+}) {
+  const [filter, setFilter] = useState<"all" | SubjectEventKind>("all");
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<SubjectEvent | null>(null);
+  const [defaultKind, setDefaultKind] = useState<SubjectEventKind>("milestone");
+  const subjectEvents = sortedSubjectEvents(events, subject.id);
+  const visibleEvents = subjectEvents.filter((event) => filter === "all" || event.kind === filter);
+  const milestoneCount = subjectEvents.filter((event) => event.kind === "milestone").length;
+  const deadlineCount = subjectEvents.length - milestoneCount;
+
+  function openCreate(kind: SubjectEventKind) {
+    setEditingEvent(null);
+    setDefaultKind(kind);
+    setIsFormOpen(true);
+  }
+
+  function openEdit(event: SubjectEvent) {
+    setEditingEvent(event);
+    setDefaultKind(event.kind);
+    setIsFormOpen(true);
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#30486a] bg-[#111a2b]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#293852] bg-[#121c2d] px-4 py-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">Calendario del asunto</p>
+          <h4 className="mt-1 text-base font-black text-[#eef4ff]">Hitos y vencimientos</h4>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => openCreate("milestone")} className="rounded-lg border border-[#315f5a] bg-[#122b2a] px-3 py-2 text-sm font-black text-[#63d3a5] transition hover:bg-[#183735] focus:outline-none focus:ring-2 focus:ring-[#63d3a5]/30">
+            + Hito
+          </button>
+          <button type="button" onClick={() => openCreate("deadline")} className="rounded-lg border border-[#66532f] bg-[#282116] px-3 py-2 text-sm font-black text-[#f2be67] transition hover:bg-[#332919] focus:outline-none focus:ring-2 focus:ring-[#f2be67]/30">
+            + Vencimiento
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto border-b border-[#263852] px-4 py-3 hide-scrollbar" aria-label="Filtrar fechas clave">
+        {([
+          ["all", "Todas", subjectEvents.length],
+          ["milestone", "Hitos", milestoneCount],
+          ["deadline", "Vencimientos", deadlineCount],
+        ] as const).map(([value, label, count]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setFilter(value)}
+            aria-pressed={filter === value}
+            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-black transition ${filter === value ? "border-[#82afff] bg-[#1a3354] text-[#cfe0ff]" : "border-[#344562] text-[#91a0bb] hover:bg-[#182238]"}`}
+          >
+            {label} <span className="ml-1 font-mono opacity-70">{count}</span>
+          </button>
+        ))}
+      </div>
+
+      {visibleEvents.length === 0 ? (
+        <div className="m-4 rounded-xl border border-dashed border-[#3a4d69] bg-[#0d1727] px-5 py-8 text-center">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-[#315177] bg-[#142642] text-[#82afff]" aria-hidden="true">◇</div>
+          <p className="mt-3 text-sm font-bold text-[#c9d5e7]">
+            {subjectEvents.length === 0 ? "Aún no hay fechas clave." : "No hay elementos de este tipo."}
+          </p>
+          <p className="mt-1 text-xs text-[#8191ac]">Registra un logro importante o una fecha límite del asunto.</p>
+        </div>
+      ) : (
+        <ol className="relative max-h-[520px] overflow-y-auto p-4 before:absolute before:bottom-8 before:left-[43px] before:top-8 before:w-px before:bg-[#315177]">
+          {visibleEvents.map((event) => {
+            const isMilestone = event.kind === "milestone";
+            return (
+              <li key={event.id} className="relative grid grid-cols-[56px_minmax(0,1fr)] gap-3 py-2">
+                <time dateTime={event.date} className={`relative z-[1] flex h-12 w-12 flex-col items-center justify-center rounded-xl border font-mono ${isMilestone ? "border-[#315f5a] bg-[#122b2a] text-[#63d3a5]" : "border-[#66532f] bg-[#282116] text-[#f2be67]"}`}>
+                  <span className="text-[10px] font-black uppercase">{event.date.slice(5, 7)}</span>
+                  <span className="text-base font-black leading-none">{event.date.slice(8, 10)}</span>
+                </time>
+                <article className="rounded-xl border border-[#2f3e59] bg-[#0f1726] p-3 transition hover:border-[#486080] sm:p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ${isMilestone ? "border-[#315f5a] bg-[#122b2a] text-[#63d3a5]" : "border-[#66532f] bg-[#282116] text-[#f2be67]"}`}>
+                          {isMilestone ? "Hito" : "Vencimiento"}
+                        </span>
+                        <time dateTime={event.date} className="font-mono text-xs font-bold text-[#91a0bb]">{formatDate(event.date)}</time>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#e5ebf5]">{event.description}</p>
+                    </div>
+                    <div className="flex w-full justify-end gap-1.5 sm:w-auto">
+                      <button type="button" onClick={() => openEdit(event)} className="h-8 rounded-md border border-[#344562] px-2.5 text-xs font-bold text-[#b9c5dd] transition hover:bg-[#182238]">Editar</button>
+                      <button type="button" onClick={() => { if (window.confirm(`¿Borrar este ${isMilestone ? "hito" : "vencimiento"}?`)) onDeleteEvent(event.id); }} className="h-8 rounded-md border border-[#55352f] px-2.5 text-xs font-bold text-[#ff9d88] transition hover:bg-[#2e1716]">Borrar</button>
+                    </div>
+                  </div>
+                </article>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      <SubjectEventFormModal
+        key={editingEvent?.id ?? `new-${defaultKind}`}
+        isOpen={isFormOpen}
+        event={editingEvent}
+        defaultKind={defaultKind}
+        subjectName={subject.name}
+        onSave={(draft) => {
+          if (editingEvent) onPatchEvent(editingEvent.id, draft);
+          else onAddEvent(subject.id, draft);
+        }}
+        onClose={() => setIsFormOpen(false)}
+      />
+    </section>
+  );
+}
+
 function PhaseDatePair({
   label,
   start,
@@ -1615,158 +1899,178 @@ function SubjectPhaseSection({
   );
 }
 
-function SubjectPanel({
+function FolderIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.5 6.5h7l2 2h8v10h-17z" />
+      <path d="M3.5 10h17" />
+    </svg>
+  );
+}
+
+function SubjectFolderBrowser({
   subjects,
+  tasks,
   selectedSubjectId,
   onSelectSubject,
-  onAddChildSubject,
+  onAddSubject,
 }: {
   subjects: Subject[];
+  tasks: Task[];
   selectedSubjectId: string | null;
   onSelectSubject: (subjectId: string | null) => void;
-  onAddChildSubject: (subjectId: string) => void;
+  onAddSubject: (parentSubjectId: string | null) => void;
 }) {
-  const [collapsedSubjectIds, setCollapsedSubjectIds] = useState<Set<string>>(() => new Set());
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [subjectQuery, setSubjectQuery] = useState("");
+  const currentFolder = currentFolderId
+    ? subjects.find((subject) => subject.id === currentFolderId) ?? null
+    : null;
+  const activeFolderId = currentFolder?.id ?? null;
+  const breadcrumbSubjects = currentFolder
+    ? [...getSubjectAncestorIds(subjects, currentFolder.id), currentFolder.id]
+        .map((id) => subjects.find((subject) => subject.id === id))
+        .filter((subject): subject is Subject => Boolean(subject))
+    : [];
   const visibleSubjects = useMemo(() => {
     const query = subjectQuery.trim().toLocaleLowerCase("es");
 
-    if (!query) return subjects;
-
-    const visibleIds = new Set<string>();
-    for (const subject of subjects) {
-      if (getSubjectPath(subjects, subject.id).toLocaleLowerCase("es").includes(query)) {
-        visibleIds.add(subject.id);
-        for (const ancestorId of getSubjectAncestorIds(subjects, subject.id)) {
-          visibleIds.add(ancestorId);
-        }
-      }
+    if (query) {
+      return subjects
+        .filter((subject) =>
+          getSubjectPath(subjects, subject.id).toLocaleLowerCase("es").includes(query),
+        )
+        .sort((a, b) =>
+          getSubjectPath(subjects, a.id).localeCompare(getSubjectPath(subjects, b.id), "es"),
+        );
     }
 
-    return subjects.filter((subject) => visibleIds.has(subject.id));
-  }, [subjectQuery, subjects]);
+    return subjects
+      .filter((subject) => subject.parentSubjectId === activeFolderId)
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }, [activeFolderId, subjectQuery, subjects]);
 
-  function toggleSubject(subjectId: string) {
-    setCollapsedSubjectIds((current) => {
-      const next = new Set(current);
-
-      if (next.has(subjectId)) {
-        next.delete(subjectId);
-      } else {
-        next.add(subjectId);
-      }
-
-      return next;
-    });
+  function navigateTo(subjectId: string | null) {
+    setCurrentFolderId(subjectId);
+    setSubjectQuery("");
+    onSelectSubject(subjectId);
   }
 
-  const expandedSubjectIds = useMemo(() => {
-    const selectedAncestors = new Set(getSubjectAncestorIds(subjects, selectedSubjectId));
-
-    return new Set(
-      visibleSubjects
-        .filter(
-          (subject) =>
-            Boolean(subjectQuery.trim()) ||
-            !collapsedSubjectIds.has(subject.id) ||
-            selectedAncestors.has(subject.id),
-        )
-        .map((subject) => subject.id),
-    );
-  }, [collapsedSubjectIds, selectedSubjectId, subjectQuery, subjects, visibleSubjects]);
-
-  const treeItems = useMemo(
-    () => getSubjectTreeItems(visibleSubjects, expandedSubjectIds),
-    [expandedSubjectIds, visibleSubjects],
-  );
-
   return (
-    <aside>
+    <div>
       {subjects.length === 0 ? (
-        <TaskEmptyState label="Todavía no hay asuntos." hint="Crea uno para agrupar tareas por contexto." />
+        <TaskEmptyState label="Todavía no hay asuntos." hint="Crea la primera carpeta para organizar tu trabajo." />
       ) : (
-        <div className="rounded-xl border border-[#263d5c] bg-[#091522] p-2">
-          <label className="relative mb-2 block">
+        <>
+          <div className="flex flex-col gap-3 border-b border-[#263852] pb-4 lg:flex-row lg:items-center lg:justify-between">
+            <nav aria-label="Ruta de asuntos" className="flex min-w-0 items-center gap-1 overflow-x-auto hide-scrollbar">
+              <button
+                type="button"
+                onClick={() => navigateTo(null)}
+                className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-black transition ${currentFolderId === null ? "bg-[#1c3b64] text-[#d9e7ff]" : "text-[#8fa0bd] hover:bg-[#16283f] hover:text-[#d9e7ff]"}`}
+              >
+                Todos los asuntos
+              </button>
+              {breadcrumbSubjects.map((subject) => (
+                <div key={subject.id} className="flex shrink-0 items-center gap-1">
+                  <span aria-hidden="true" className="text-[#526681]">/</span>
+                  <button
+                    type="button"
+                    onClick={() => navigateTo(subject.id)}
+                    aria-current={currentFolderId === subject.id ? "page" : undefined}
+                    className={`max-w-52 truncate rounded-lg px-2.5 py-1.5 text-xs font-black transition ${currentFolderId === subject.id ? "bg-[#1c3b64] text-[#d9e7ff]" : "text-[#8fa0bd] hover:bg-[#16283f] hover:text-[#d9e7ff]"}`}
+                  >
+                    {subject.name}
+                  </button>
+                </div>
+              ))}
+            </nav>
+            <div className="flex shrink-0 gap-2">
+              {currentFolder ? (
+                <button type="button" onClick={() => navigateTo(currentFolder.parentSubjectId)} className="rounded-xl border border-[#344d6c] px-3 py-2 text-sm font-bold text-[#afbed3] transition hover:bg-[#16283f]">
+                  ← Subir
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => onAddSubject(activeFolderId)}
+                className="rounded-xl border border-[#82afff] bg-[#1a3354] px-3 py-2 text-sm font-black text-[#cfe0ff] transition hover:bg-[#22436d] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+              >
+                + {currentFolder ? "Subasunto" : "Asunto"}
+              </button>
+            </div>
+          </div>
+
+          <label className="relative mt-4 block max-w-xl">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#69809f]">⌕</span>
             <input
               value={subjectQuery}
               onChange={(event) => setSubjectQuery(event.target.value)}
-              placeholder="Filtrar asuntos"
-              aria-label="Filtrar asuntos"
-              className="h-10 w-full rounded-lg border border-[#2b4261] bg-[#0d1a2a] pl-9 pr-3 text-sm font-semibold text-[#e7eef9] outline-none transition placeholder:text-[#637794] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
+              placeholder="Buscar en todas las carpetas"
+              aria-label="Buscar asuntos"
+              className="h-11 w-full rounded-xl border border-[#2b4261] bg-[#091522] pl-9 pr-3 text-sm font-semibold text-[#e7eef9] outline-none transition placeholder:text-[#637794] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
             />
           </label>
-          <div className="hide-scrollbar max-h-[min(55vh,620px)] space-y-1 overflow-y-auto pr-0.5">
-          {treeItems.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-[#7f91ad]">No hay asuntos que coincidan.</p>
-          ) : treeItems.map(({ subject, depth, hasChildren }) => {
-            const isSelected = selectedSubjectId === subject.id;
-            const isExpanded = expandedSubjectIds.has(subject.id);
 
-            return (
-              <div
-                key={subject.id}
-                className="relative"
-                style={{ paddingLeft: depth ? `${Math.min(depth, 6) * 18}px` : undefined }}
-              >
-                {depth > 0 ? (
-                  <span
-                    aria-hidden="true"
-                    className="absolute left-1 top-0 h-full w-px bg-[#253750]"
-                  />
-                ) : null}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {visibleSubjects.length === 0 ? (
+              <div className="col-span-full rounded-xl border border-dashed border-[#344d6c] bg-[#091522] px-5 py-10 text-center">
+                <p className="text-sm font-bold text-[#b9c7da]">{subjectQuery ? "No hay asuntos que coincidan." : "Esta carpeta todavía no tiene subasuntos."}</p>
+                <button type="button" onClick={() => onAddSubject(activeFolderId)} className="mt-3 text-sm font-black text-[#82afff] hover:text-[#b7d0ff]">
+                  {currentFolder ? "Crear el primer subasunto" : "Crear el primer asunto"}
+                </button>
+              </div>
+            ) : visibleSubjects.map((subject) => {
+              const isSelected = selectedSubjectId === subject.id;
+              const childCount = subjects.filter((item) => item.parentSubjectId === subject.id).length;
+              const taskCount = tasks.filter(
+                (task) => isActiveTask(task) && task.subjectIds.includes(subject.id),
+              ).length;
 
-                <div
-                  className={`grid grid-cols-[28px_minmax(0,1fr)_32px] items-center gap-2 rounded-lg border p-2 transition ${
-                    isSelected
-                      ? "border-[#5588ce] bg-[#17345a]"
-                      : "border-transparent bg-[#0d1a2a] hover:border-[#345171] hover:bg-[#14273d]"
-                  }`}
+              return (
+                <article
+                  key={subject.id}
+                  className={`group relative overflow-hidden rounded-2xl border transition duration-200 ${isSelected ? "border-[#6597dc] bg-[#17345a] shadow-[0_12px_32px_rgba(50,100,170,0.16)]" : "border-[#2d4564] bg-[#0b1828] hover:-translate-y-0.5 hover:border-[#4b6f99] hover:bg-[#102238]"}`}
                 >
                   <button
                     type="button"
-                    onClick={() => (hasChildren ? toggleSubject(subject.id) : onSelectSubject(subject.id))}
-                    aria-label={
-                      hasChildren
-                        ? isExpanded
-                          ? `Cerrar ${subject.name}`
-                          : `Abrir ${subject.name}`
-                        : `Seleccionar ${subject.name}`
-                    }
-                    className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs font-black transition focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 ${
-                      hasChildren
-                        ? "border-[#314966] bg-[#102038] text-[#82afff] hover:bg-[#173050]"
-                        : "border-transparent bg-transparent text-[#52617b]"
-                    }`}
+                    onClick={() => navigateTo(subject.id)}
+                    aria-label={`Abrir carpeta ${subject.name}`}
+                    className="block w-full p-4 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#82afff]/40"
                   >
-                    {hasChildren ? (isExpanded ? "v" : ">") : ""}
+                    <span className="flex items-start justify-between gap-3">
+                      <span className={`flex h-11 w-11 items-center justify-center rounded-xl border ${isSelected ? "border-[#75a8ec] bg-[#204777] text-[#b9d4ff]" : "border-[#355274] bg-[#11263e] text-[#82afff]"}`}>
+                        <FolderIcon />
+                      </span>
+                      <span className="text-lg text-[#6f8caf] transition group-hover:translate-x-0.5 group-hover:text-[#a9c7ee]" aria-hidden="true">→</span>
+                    </span>
+                    <span className="mt-4 block truncate text-base font-black text-[#edf3fc]">{subject.name}</span>
+                    {subjectQuery ? (
+                      <span className="mt-1 block truncate text-xs text-[#7f92ae]">{getSubjectPath(subjects, subject.parentSubjectId)}</span>
+                    ) : null}
+                    <span className="mt-4 flex flex-wrap gap-2 pr-8 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[#8ca0bc]">
+                      <span>{childCount} {childCount === 1 ? "subasunto" : "subasuntos"}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{taskCount} {taskCount === 1 ? "tarea" : "tareas"}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{getHorizonLabel(subject.horizon)}</span>
+                    </span>
                   </button>
-
                   <button
                     type="button"
-                    onClick={() => onSelectSubject(subject.id)}
-                    className="min-w-0 truncate text-left text-sm font-semibold text-[#e8effa] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
-                  >
-                    {subject.name}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => onAddChildSubject(subject.id)}
-                    aria-label={`Agregar asunto dentro de ${subject.name}`}
-                    title={`Agregar asunto dentro de ${subject.name}`}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-[#314966] bg-[#102038] text-sm font-black text-[#82afff] transition hover:bg-[#173050] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                    onClick={() => onAddSubject(subject.id)}
+                    aria-label={`Crear subasunto dentro de ${subject.name}`}
+                    className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg border border-[#355274] bg-[#102238] text-sm font-black text-[#82afff] opacity-70 transition hover:bg-[#1a3556] hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#82afff]/30 group-hover:opacity-100"
                   >
                     +
                   </button>
-                </div>
-              </div>
-            );
-          })}
+                </article>
+              );
+            })}
           </div>
-        </div>
+        </>
       )}
-    </aside>
+    </div>
   );
 }
 
@@ -1894,7 +2198,7 @@ export default function TaskManager() {
   const [newSubjectParentId, setNewSubjectParentId] = useState<string | null>(null);
   const [isSubjectEditModalOpen, setIsSubjectEditModalOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [subjectViewMode, setSubjectViewMode] = useState<SubjectViewMode>("tree");
+  const [subjectViewMode, setSubjectViewMode] = useState<SubjectViewMode>("folders");
   const searchRef = useRef<HTMLInputElement>(null);
 
   const activeTasks = workspace.tasks.filter(isActiveTask);
@@ -2138,7 +2442,7 @@ export default function TaskManager() {
                     {activeView === "subjects" ? (
                       <div className="grid grid-cols-2 rounded-xl border border-[#293f5e] bg-[#0d1a2a] p-1">
                         {[
-                          { key: "tree" as const, label: "Arbol" },
+                          { key: "folders" as const, label: "Carpetas" },
                           { key: "horizon" as const, label: "Horizonte" },
                         ].map((item) => (
                           <button
@@ -2182,40 +2486,23 @@ export default function TaskManager() {
               </div>
 
               {activeView === "subjects" ? (
-                <div
-                  className={`grid gap-6 ${
-                    subjectViewMode === "horizon"
-                      ? "xl:grid-cols-[minmax(520px,1fr)_minmax(360px,520px)]"
-                      : "xl:grid-cols-[minmax(300px,400px)_minmax(0,1fr)]"
-                  }`}
-                >
-                  <div className="rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.14)] xl:sticky xl:top-24 xl:self-start">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Contextos</p>
-                        <h3 className="mt-1 text-base font-black text-[#e9f0fb]">Asuntos</h3>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewSubjectParentId(null);
-                          setIsSubjectModalOpen(true);
-                        }}
-                        className="rounded-xl border border-[#355174] bg-[#13233a] px-3 py-2 text-sm font-bold text-[#c6d4e9] transition hover:border-[#4b6b94] hover:bg-[#192d46] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
-                      >
-                        + Asunto
-                      </button>
+                <div className="space-y-6">
+                  <div className="rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.14)] sm:p-5">
+                    <div className="mb-4">
+                      <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Explorador</p>
+                      <h3 className="mt-1 text-lg font-black text-[#e9f0fb]">Carpetas de asuntos</h3>
                     </div>
-                    {subjectViewMode === "tree" ? (
-                      <SubjectPanel
+                    {subjectViewMode === "folders" ? (
+                      <SubjectFolderBrowser
                         subjects={workspace.subjects}
+                        tasks={workspace.tasks}
                         selectedSubjectId={selectedSubjectId}
                         onSelectSubject={(subjectId) => {
                           setSelectedSubjectId(subjectId);
                           setActiveView("subjects");
                         }}
-                        onAddChildSubject={(subjectId) => {
-                          setNewSubjectParentId(subjectId);
+                        onAddSubject={(parentSubjectId) => {
+                          setNewSubjectParentId(parentSubjectId);
                           setIsSubjectModalOpen(true);
                         }}
                       />
@@ -2261,6 +2548,13 @@ export default function TaskManager() {
                             </button>
                           </div>
                         </div>
+                        <SubjectEventSection
+                          subject={selectedSubject}
+                          events={workspace.subjectEvents}
+                          onAddEvent={workspace.addSubjectEvent}
+                          onPatchEvent={workspace.updateSubjectEvent}
+                          onDeleteEvent={workspace.deleteSubjectEvent}
+                        />
                         <SubjectPhaseSection
                           subject={selectedSubject}
                           phases={workspace.phases}

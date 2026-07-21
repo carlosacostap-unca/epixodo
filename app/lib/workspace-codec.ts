@@ -1,6 +1,9 @@
 import {
   emptyWorkspace,
+  isSubjectEventKind,
+  isValidDateOnly,
   type Subject,
+  type SubjectEvent,
   type SubjectPhase,
   type SubjectHorizon,
   type Task,
@@ -28,6 +31,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isSubjectHorizon(value: unknown): value is SubjectHorizon {
   return value === "short" || value === "medium" || value === "long" || value === "none";
+}
+
+export function repairMojibake(value: string): string {
+  return value.replace(/[ÃÂ][\u0080-\u00bf]/g, (sequence) => {
+    const bytes = Uint8Array.from(Array.from(sequence, (character) => character.charCodeAt(0)));
+
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      return sequence;
+    }
+  });
 }
 
 function uniqueStringIds(value: unknown): string[] {
@@ -61,8 +76,8 @@ function toTask(value: unknown): Task | null {
 
   return {
     id: legacy.id,
-    title: legacy.title,
-    notes: legacy.notes,
+    title: repairMojibake(legacy.title),
+    notes: repairMojibake(legacy.notes),
     status: legacy.status as Task["status"],
     subjectIds: subjectIds.length > 0 ? subjectIds : legacyProjectId ? [legacyProjectId] : [],
     phaseId: typeof legacy.phaseId === "string" ? legacy.phaseId : null,
@@ -92,7 +107,36 @@ function toTask(value: unknown): Task | null {
 }
 
 function toDateOnly(value: unknown): string | null {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+  return isValidDateOnly(value) ? value : null;
+}
+
+function toSubjectEvent(value: unknown): SubjectEvent | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.subjectId !== "string" ||
+    !isSubjectEventKind(value.kind) ||
+    typeof value.description !== "string" ||
+    !value.description.trim() ||
+    !isValidDateOnly(value.date) ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    subjectId: value.subjectId,
+    kind: value.kind,
+    description: repairMojibake(value.description.trim()),
+    date: value.date,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
 }
 
 function toSubjectPhase(value: unknown): SubjectPhase | null {
@@ -114,7 +158,7 @@ function toSubjectPhase(value: unknown): SubjectPhase | null {
   return {
     id: value.id,
     subjectId: value.subjectId,
-    name: value.name.trim(),
+    name: repairMojibake(value.name.trim()),
     plannedStart: toDateOnly(value.plannedStart),
     executedStart: toDateOnly(value.executedStart),
     plannedEnd: toDateOnly(value.plannedEnd),
@@ -141,7 +185,7 @@ function toSubject(value: unknown): Subject | null {
 
   return {
     id: value.id,
-    name: value.name,
+    name: repairMojibake(value.name),
     parentSubjectId: typeof value.parentSubjectId === "string" ? value.parentSubjectId : null,
     horizon: isSubjectHorizon(value.horizon) ? value.horizon : "none",
     createdAt: value.createdAt,
@@ -167,7 +211,7 @@ function legacyProjectToSubject(value: unknown): Subject | null {
 
   return {
     id: project.id,
-    name: project.name,
+    name: repairMojibake(project.name),
     parentSubjectId: null,
     horizon: "none",
     createdAt: project.createdAt,
@@ -195,6 +239,10 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
       .filter((phase) => subjectIds.has(phase.subjectId)),
   );
   const phasesById = new Map(phases.map((phase) => [phase.id, phase]));
+  const subjectEvents = (Array.isArray(value.subjectEvents) ? value.subjectEvents : [])
+    .map(toSubjectEvent)
+    .filter((event): event is SubjectEvent => Boolean(event))
+    .filter((event) => subjectIds.has(event.subjectId));
   const taskIds = new Set<string>();
   const tasks = value.tasks
     .map(toTask)
@@ -219,7 +267,7 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
       };
     });
 
-  return { tasks, subjects, phases };
+  return { tasks, subjects, phases, subjectEvents };
 }
 
 export function parseWorkspaceJson(raw: string | null): WorkspaceData {
@@ -235,5 +283,10 @@ export function parseWorkspaceJson(raw: string | null): WorkspaceData {
 }
 
 export function hasWorkspaceContent(workspace: WorkspaceData): boolean {
-  return workspace.tasks.length > 0 || workspace.subjects.length > 0 || workspace.phases.length > 0;
+  return (
+    workspace.tasks.length > 0 ||
+    workspace.subjects.length > 0 ||
+    workspace.phases.length > 0 ||
+    workspace.subjectEvents.length > 0
+  );
 }

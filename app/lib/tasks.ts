@@ -33,6 +33,20 @@ export type SubjectPhaseDraft = Pick<SubjectPhase, "name"> &
     Pick<SubjectPhase, "plannedStart" | "executedStart" | "plannedEnd" | "executedEnd">
   >;
 
+export type SubjectEventKind = "milestone" | "deadline";
+
+export type SubjectEvent = {
+  id: string;
+  subjectId: string;
+  kind: SubjectEventKind;
+  description: string;
+  date: DateOnly;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SubjectEventDraft = Pick<SubjectEvent, "kind" | "description" | "date">;
+
 export type Task = {
   id: string;
   title: string;
@@ -65,6 +79,7 @@ export type WorkspaceData = {
   tasks: Task[];
   subjects: Subject[];
   phases: SubjectPhase[];
+  subjectEvents: SubjectEvent[];
 };
 
 export type TaskTreeItem = {
@@ -97,6 +112,7 @@ export function emptyWorkspace(): WorkspaceData {
     tasks: [],
     subjects: [],
     phases: [],
+    subjectEvents: [],
   };
 }
 
@@ -119,6 +135,33 @@ export function getTodayDateOnly(date = new Date()): DateOnly {
 
 export function compareDateOnly(a: DateOnly, b: DateOnly): number {
   return a.localeCompare(b);
+}
+
+export function isValidDateOnly(value: unknown): value is DateOnly {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+export function isSubjectEventKind(value: unknown): value is SubjectEventKind {
+  return value === "milestone" || value === "deadline";
+}
+
+export function isValidSubjectEventDraft(draft: SubjectEventDraft): boolean {
+  return (
+    isSubjectEventKind(draft.kind) &&
+    Boolean(draft.description.trim()) &&
+    isValidDateOnly(draft.date)
+  );
 }
 
 export function isFutureDate(date: DateOnly | null, today = getTodayDateOnly()) {
@@ -176,6 +219,63 @@ export function createSubjectPhase(
     order,
     createdAt: timestamp,
     updatedAt: timestamp,
+  };
+}
+
+export function createSubjectEvent(
+  subjectId: string,
+  draft: SubjectEventDraft,
+  now = new Date(),
+): SubjectEvent {
+  const timestamp = now.toISOString();
+
+  return {
+    id: createId("event"),
+    subjectId,
+    kind: draft.kind,
+    description: draft.description.trim(),
+    date: draft.date,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function patchSubjectEvent(
+  event: SubjectEvent,
+  patch: Partial<SubjectEventDraft>,
+  now = new Date(),
+): SubjectEvent | null {
+  const updated: SubjectEvent = {
+    ...event,
+    ...patch,
+    description: patch.description?.trim() ?? event.description,
+    updatedAt: now.toISOString(),
+  };
+
+  return isValidSubjectEventDraft(updated) ? updated : null;
+}
+
+export function sortedSubjectEvents(
+  events: SubjectEvent[],
+  subjectId?: string,
+): SubjectEvent[] {
+  return events
+    .filter((event) => !subjectId || event.subjectId === subjectId)
+    .sort(
+      (a, b) =>
+        compareDateOnly(a.date, b.date) ||
+        a.createdAt.localeCompare(b.createdAt) ||
+        a.id.localeCompare(b.id),
+    );
+}
+
+export function removeSubjectEventFromWorkspace(
+  workspace: WorkspaceData,
+  eventId: string,
+): WorkspaceData {
+  return {
+    ...workspace,
+    subjectEvents: (workspace.subjectEvents ?? []).filter((event) => event.id !== eventId),
   };
 }
 
@@ -331,6 +431,9 @@ export function removeSubjectFromWorkspace(
     ...workspace,
     subjects: workspace.subjects.filter((subject) => !deletedSubjectIds.has(subject.id)),
     phases: workspace.phases.filter((phase) => !deletedPhaseIds.has(phase.id)),
+    subjectEvents: (workspace.subjectEvents ?? []).filter(
+      (event) => !deletedSubjectIds.has(event.subjectId),
+    ),
     tasks: workspace.tasks.map((task) => ({
       ...task,
       subjectIds: task.subjectIds.filter((id) => !deletedSubjectIds.has(id)),
