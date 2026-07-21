@@ -11,6 +11,7 @@
     "start": "next start",
     "openspec": "openspec",
     "schema:pocketbase": "node scripts/ensure_workspaces_collection.mjs",
+    "test:phases": "node scripts/test-subject-phases.mjs",
     "lint": "eslint"
   },
   "dependencies": {

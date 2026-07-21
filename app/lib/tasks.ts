@@ -15,12 +15,31 @@ export type Subject = {
   updatedAt: string;
 };
 
+export type SubjectPhase = {
+  id: string;
+  subjectId: string;
+  name: string;
+  plannedStart: DateOnly | null;
+  executedStart: DateOnly | null;
+  plannedEnd: DateOnly | null;
+  executedEnd: DateOnly | null;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SubjectPhaseDraft = Pick<SubjectPhase, "name"> &
+  Partial<
+    Pick<SubjectPhase, "plannedStart" | "executedStart" | "plannedEnd" | "executedEnd">
+  >;
+
 export type Task = {
   id: string;
   title: string;
   notes: string;
   status: TaskStatus;
   subjectIds: string[];
+  phaseId: string | null;
   parentTaskId: string | null;
   hacerEl: DateOnly | null;
   venceEl: DateOnly | null;
@@ -35,6 +54,7 @@ export type TaskDraft = {
   notes?: string;
   status?: TaskStatus;
   subjectIds?: string[];
+  phaseId?: string | null;
   parentTaskId?: string | null;
   hacerEl?: DateOnly | null;
   venceEl?: DateOnly | null;
@@ -44,6 +64,7 @@ export type TaskDraft = {
 export type WorkspaceData = {
   tasks: Task[];
   subjects: Subject[];
+  phases: SubjectPhase[];
 };
 
 export type TaskTreeItem = {
@@ -75,6 +96,7 @@ export function emptyWorkspace(): WorkspaceData {
   return {
     tasks: [],
     subjects: [],
+    phases: [],
   };
 }
 
@@ -124,6 +146,7 @@ export function normalizeTaskDraft(draft: TaskDraft, now = new Date()): Task {
     notes: draft.notes?.trim() ?? "",
     status: draft.status ?? "pending",
     subjectIds: uniqueIds(draft.subjectIds),
+    phaseId: draft.phaseId || null,
     parentTaskId: draft.parentTaskId || null,
     hacerEl: draft.hacerEl || null,
     venceEl: draft.venceEl || null,
@@ -131,6 +154,189 @@ export function normalizeTaskDraft(draft: TaskDraft, now = new Date()): Task {
     createdAt: timestamp,
     updatedAt: timestamp,
     completedAt: draft.status === "completed" ? timestamp : null,
+  };
+}
+
+export function createSubjectPhase(
+  subjectId: string,
+  draft: SubjectPhaseDraft,
+  order: number,
+  now = new Date(),
+): SubjectPhase {
+  const timestamp = now.toISOString();
+
+  return {
+    id: createId("phase"),
+    subjectId,
+    name: draft.name.trim(),
+    plannedStart: draft.plannedStart || null,
+    executedStart: draft.executedStart || null,
+    plannedEnd: draft.plannedEnd || null,
+    executedEnd: draft.executedEnd || null,
+    order,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export type PhaseDateRangeError = "planned" | "executed" | null;
+
+export function getPhaseDateRangeError(
+  phase: Pick<
+    SubjectPhaseDraft,
+    "plannedStart" | "plannedEnd" | "executedStart" | "executedEnd"
+  >,
+): PhaseDateRangeError {
+  if (
+    phase.plannedStart &&
+    phase.plannedEnd &&
+    compareDateOnly(phase.plannedEnd, phase.plannedStart) < 0
+  ) {
+    return "planned";
+  }
+
+  if (
+    phase.executedStart &&
+    phase.executedEnd &&
+    compareDateOnly(phase.executedEnd, phase.executedStart) < 0
+  ) {
+    return "executed";
+  }
+
+  return null;
+}
+
+export function sortedSubjectPhases(
+  phases: SubjectPhase[],
+  subjectId?: string,
+): SubjectPhase[] {
+  return phases
+    .filter((phase) => !subjectId || phase.subjectId === subjectId)
+    .sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+}
+
+export function normalizePhaseOrder(phases: SubjectPhase[]): SubjectPhase[] {
+  const subjectIds = Array.from(new Set(phases.map((phase) => phase.subjectId)));
+
+  return subjectIds.flatMap((subjectId) =>
+    sortedSubjectPhases(phases, subjectId).map((phase, order) => ({ ...phase, order })),
+  );
+}
+
+export function reorderSubjectPhases(
+  phases: SubjectPhase[],
+  subjectId: string,
+  orderedPhaseIds: string[],
+): SubjectPhase[] {
+  const current = sortedSubjectPhases(phases, subjectId);
+  const byId = new Map(current.map((phase) => [phase.id, phase]));
+  const requested = uniqueIds(orderedPhaseIds)
+    .map((id) => byId.get(id))
+    .filter((phase): phase is SubjectPhase => Boolean(phase));
+  const requestedIds = new Set(requested.map((phase) => phase.id));
+  const ordered = [...requested, ...current.filter((phase) => !requestedIds.has(phase.id))];
+  const orderById = new Map(ordered.map((phase, order) => [phase.id, order]));
+
+  return phases.map((phase) =>
+    phase.subjectId === subjectId
+      ? { ...phase, order: orderById.get(phase.id) ?? phase.order }
+      : phase,
+  );
+}
+
+export function getTaskAvailablePhases(
+  phases: SubjectPhase[],
+  subjectIds: string[],
+): SubjectPhase[] {
+  const selectedSubjectIds = new Set(subjectIds);
+  return sortedSubjectPhases(phases).filter((phase) => selectedSubjectIds.has(phase.subjectId));
+}
+
+export function isTaskPhaseCompatible(
+  phases: SubjectPhase[],
+  subjectIds: string[],
+  phaseId: string | null | undefined,
+): boolean {
+  if (!phaseId) {
+    return true;
+  }
+
+  const phase = phases.find((item) => item.id === phaseId);
+  return Boolean(phase && subjectIds.includes(phase.subjectId));
+}
+
+export function normalizeTaskPhaseAssignment(
+  phases: SubjectPhase[],
+  subjectIds: string[] | undefined,
+  phaseId: string | null | undefined,
+): { subjectIds: string[]; phaseId: string | null } {
+  const nextSubjectIds = uniqueIds(subjectIds);
+
+  if (!phaseId) {
+    return { subjectIds: nextSubjectIds, phaseId: null };
+  }
+
+  const phase = phases.find((item) => item.id === phaseId);
+
+  if (!phase) {
+    return { subjectIds: nextSubjectIds, phaseId: null };
+  }
+
+  return {
+    subjectIds: uniqueIds([...nextSubjectIds, phase.subjectId]),
+    phaseId: phase.id,
+  };
+}
+
+export function removePhaseFromWorkspace(
+  workspace: WorkspaceData,
+  phaseId: string,
+  updatedAt = new Date().toISOString(),
+): WorkspaceData {
+  const deleted = workspace.phases.find((phase) => phase.id === phaseId);
+  const remaining = workspace.phases.filter((phase) => phase.id !== phaseId);
+  const phases = deleted
+    ? reorderSubjectPhases(
+        remaining,
+        deleted.subjectId,
+        sortedSubjectPhases(remaining, deleted.subjectId).map((phase) => phase.id),
+      )
+    : remaining;
+
+  return {
+    ...workspace,
+    phases,
+    tasks: workspace.tasks.map((task) =>
+      task.phaseId === phaseId ? { ...task, phaseId: null, updatedAt } : task,
+    ),
+  };
+}
+
+export function removeSubjectFromWorkspace(
+  workspace: WorkspaceData,
+  subjectId: string,
+  updatedAt = new Date().toISOString(),
+): WorkspaceData {
+  const deletedSubjectIds = new Set([
+    subjectId,
+    ...getSubjectDescendantIds(workspace.subjects, subjectId),
+  ]);
+  const deletedPhaseIds = new Set(
+    workspace.phases
+      .filter((phase) => deletedSubjectIds.has(phase.subjectId))
+      .map((phase) => phase.id),
+  );
+
+  return {
+    ...workspace,
+    subjects: workspace.subjects.filter((subject) => !deletedSubjectIds.has(subject.id)),
+    phases: workspace.phases.filter((phase) => !deletedPhaseIds.has(phase.id)),
+    tasks: workspace.tasks.map((task) => ({
+      ...task,
+      subjectIds: task.subjectIds.filter((id) => !deletedSubjectIds.has(id)),
+      phaseId: task.phaseId && deletedPhaseIds.has(task.phaseId) ? null : task.phaseId,
+      updatedAt,
+    })),
   };
 }
 

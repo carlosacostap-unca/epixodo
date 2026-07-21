@@ -1,10 +1,12 @@
 import {
   emptyWorkspace,
   type Subject,
+  type SubjectPhase,
   type SubjectHorizon,
   type Task,
   type WorkspaceData,
 } from "./tasks";
+import { normalizePhaseOrder } from "./tasks";
 
 type LegacyProject = {
   id: string;
@@ -13,10 +15,11 @@ type LegacyProject = {
   updatedAt: string;
 };
 
-type LegacyTask = Omit<Task, "subjectIds" | "parentTaskId"> & {
+type LegacyTask = Omit<Task, "subjectIds" | "parentTaskId" | "phaseId"> & {
   projectId?: string | null;
   subjectIds?: string[];
   parentTaskId?: string | null;
+  phaseId?: string | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -62,6 +65,7 @@ function toTask(value: unknown): Task | null {
     notes: legacy.notes,
     status: legacy.status as Task["status"],
     subjectIds: subjectIds.length > 0 ? subjectIds : legacyProjectId ? [legacyProjectId] : [],
+    phaseId: typeof legacy.phaseId === "string" ? legacy.phaseId : null,
     parentTaskId: typeof legacy.parentTaskId === "string" ? legacy.parentTaskId : null,
     hacerEl:
       "hacerEl" in legacy
@@ -84,6 +88,40 @@ function toTask(value: unknown): Task | null {
           ? legacy.completedAt
           : null
         : null,
+  };
+}
+
+function toDateOnly(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function toSubjectPhase(value: unknown): SubjectPhase | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.subjectId !== "string" ||
+    typeof value.name !== "string" ||
+    !value.name.trim() ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    subjectId: value.subjectId,
+    name: value.name.trim(),
+    plannedStart: toDateOnly(value.plannedStart),
+    executedStart: toDateOnly(value.executedStart),
+    plannedEnd: toDateOnly(value.plannedEnd),
+    executedEnd: toDateOnly(value.executedEnd),
+    order: typeof value.order === "number" && Number.isFinite(value.order) ? value.order : 0,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
   };
 }
 
@@ -150,6 +188,13 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
           .filter((subject): subject is Subject => Boolean(subject))
       : [];
   const subjectIds = new Set(subjects.map((subject) => subject.id));
+  const phases = normalizePhaseOrder(
+    (Array.isArray(value.phases) ? value.phases : [])
+      .map(toSubjectPhase)
+      .filter((phase): phase is SubjectPhase => Boolean(phase))
+      .filter((phase) => subjectIds.has(phase.subjectId)),
+  );
+  const phasesById = new Map(phases.map((phase) => [phase.id, phase]));
   const taskIds = new Set<string>();
   const tasks = value.tasks
     .map(toTask)
@@ -164,9 +209,17 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
     .map((task) => ({
       ...task,
       parentTaskId: task.parentTaskId && taskIds.has(task.parentTaskId) ? task.parentTaskId : null,
-    }));
+    }))
+    .map((task) => {
+      const phase = task.phaseId ? phasesById.get(task.phaseId) : null;
 
-  return { tasks, subjects };
+      return {
+        ...task,
+        phaseId: phase && task.subjectIds.includes(phase.subjectId) ? phase.id : null,
+      };
+    });
+
+  return { tasks, subjects, phases };
 }
 
 export function parseWorkspaceJson(raw: string | null): WorkspaceData {
@@ -182,5 +235,5 @@ export function parseWorkspaceJson(raw: string | null): WorkspaceData {
 }
 
 export function hasWorkspaceContent(workspace: WorkspaceData): boolean {
-  return workspace.tasks.length > 0 || workspace.subjects.length > 0;
+  return workspace.tasks.length > 0 || workspace.subjects.length > 0 || workspace.phases.length > 0;
 }

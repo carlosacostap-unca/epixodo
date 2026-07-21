@@ -1,18 +1,24 @@
 "use client";
 
-import { type DragEvent, FormEvent, useMemo, useState } from "react";
+import { type DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTaskWorkspace } from "../hooks/use-task-workspace";
 import {
   compareDateOnly,
+  getPhaseDateRangeError,
   getHorizonLabel,
+  getSubjectDescendantIds,
   getSubjectPath,
+  getTaskAvailablePhases,
   isActiveTask,
   subjectHorizons,
+  sortedSubjectPhases,
   taskPriorities,
   taskStatuses,
   taskTreeItems,
   type Subject,
   type SubjectHorizon,
+  type SubjectPhase,
+  type SubjectPhaseDraft,
   type Task,
   type TaskDraft,
   type TaskPriority,
@@ -27,6 +33,7 @@ type EditableTaskPatch = Partial<
     | "title"
     | "notes"
     | "subjectIds"
+    | "phaseId"
     | "parentTaskId"
     | "hacerEl"
     | "venceEl"
@@ -49,6 +56,32 @@ const viewLabels: Record<ViewKey, string> = {
   completed: "Completadas",
   subjects: "Asuntos",
 };
+
+const viewDescriptions: Record<ViewKey, string> = {
+  today: "Lo que requiere atención en esta fecha.",
+  inbox: "Ideas y tareas que todavía no organizaste.",
+  upcoming: "El trabajo que se acerca en los próximos días.",
+  waiting: "Tareas detenidas por una respuesta o condición externa.",
+  completed: "El registro de lo que ya resolviste.",
+  subjects: "Organiza el trabajo por contexto, horizonte y fases.",
+};
+
+function ViewIcon({ view }: { view: ViewKey }) {
+  const paths: Record<ViewKey, React.ReactNode> = {
+    today: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" /></>,
+    inbox: <><path d="M4 5.5h16v13H4z" /><path d="M4 14h4l1.5 2h5l1.5-2h4" /></>,
+    upcoming: <><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M8 3v4M16 3v4M3.5 10h17" /></>,
+    waiting: <><circle cx="12" cy="12" r="9" /><path d="M9.5 8.5v7M14.5 8.5v7" /></>,
+    completed: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16.5 8.5" /></>,
+    subjects: <><path d="M4 6.5h7l2 2H20v10H4z" /><path d="M4 10h16" /></>,
+  };
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {paths[view]}
+    </svg>
+  );
+}
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -83,7 +116,13 @@ function taskParentLabel(tasks: Task[], parentTaskId: string | null) {
   return tasks.find((task) => task.id === parentTaskId)?.title ?? "Tarea superior";
 }
 
-function taskMatchesQuery(task: Task, tasks: Task[], subjects: Subject[], query: string) {
+function taskMatchesQuery(
+  task: Task,
+  tasks: Task[],
+  subjects: Subject[],
+  phases: SubjectPhase[],
+  query: string,
+) {
   const normalizedQuery = query.trim().toLowerCase();
 
   if (!normalizedQuery) {
@@ -103,11 +142,33 @@ function taskMatchesQuery(task: Task, tasks: Task[], subjects: Subject[], query:
     ...horizons,
     getStatusLabel(task.status),
     getPriorityLabel(task.priority),
+    getPhaseLabel(phases, task.phaseId),
   ]
     .join(" ")
     .toLowerCase();
 
   return searchable.includes(normalizedQuery);
+}
+
+function getPhaseLabel(phases: SubjectPhase[], phaseId: string | null) {
+  if (!phaseId) {
+    return "Directamente en el asunto";
+  }
+
+  return phases.find((phase) => phase.id === phaseId)?.name ?? "Fase no disponible";
+}
+
+function PhaseChip({ phase }: { phase: SubjectPhase | null }) {
+  if (!phase) {
+    return null;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[#66532f] bg-[#282116] px-2 py-0.5 text-[11px] font-bold text-[#f6c177]">
+      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#f6c177]" />
+      {phase.name}
+    </span>
+  );
 }
 
 function getSubjectAncestorIds(subjects: Subject[], subjectId: string | null): string[] {
@@ -184,10 +245,14 @@ function sortedSubjects(subjects: Subject[]) {
   return [...subjects].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function TaskEmptyState({ label }: { label: string }) {
+function TaskEmptyState({ label, hint }: { label: string; hint?: string }) {
   return (
-    <div className="flex min-h-48 items-center justify-center rounded-lg border border-dashed border-[#344562] bg-[#101827] px-6 py-10 text-center text-sm text-[#98a7c3]">
-      {label}
+    <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-[#344562] bg-[#0d1725]/75 px-6 py-10 text-center">
+      <div className="max-w-sm">
+        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[#365079] bg-[#132642] text-lg text-[#82afff]">→</span>
+        <p className="mt-4 text-sm font-bold text-[#c9d6eb]">{label}</p>
+        {hint ? <p className="mt-1.5 text-xs leading-5 text-[#7f91ad]">{hint}</p> : null}
+      </div>
     </div>
   );
 }
@@ -200,14 +265,14 @@ function TaskBadge({
   tone?: "neutral" | "warning" | "danger" | "info";
 }) {
   const styles = {
-    neutral: "border-[#394962] bg-[#182238] text-[#b9c5dd]",
-    warning: "border-[#6f5523] bg-[#2b2415] text-[#f6c177]",
+    neutral: "border-[#3b506e] bg-[#18283e] text-[#c1cee1]",
+    warning: "border-[#745a28] bg-[#2b2415] text-[#f2be67]",
     danger: "border-[#7a3d32] bg-[#2e1716] text-[#ff9d88]",
-    info: "border-[#315887] bg-[#132844] text-[#8ab4f8]",
+    info: "border-[#38659a] bg-[#132844] text-[#82afff]",
   };
 
   return (
-    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${styles[tone]}`}>
+    <span className={`rounded-full border px-2.5 py-1 font-mono text-[10px] font-black ${styles[tone]}`}>
       {children}
     </span>
   );
@@ -221,7 +286,7 @@ function FieldLabel({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-1 text-[11px] font-bold uppercase text-[#8090ad]">
+    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#8090ad]">
       {label}
       {children}
     </label>
@@ -229,7 +294,7 @@ function FieldLabel({
 }
 
 const controlClass =
-  "h-10 w-full rounded-md border border-[#32415d] bg-[#0f1726] px-3 text-sm font-normal normal-case text-[#dce6f8] outline-none transition placeholder:text-[#61708d] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20";
+  "h-11 w-full rounded-xl border border-[#324968] bg-[#0b1726] px-3 text-sm font-normal normal-case tracking-normal text-[#dce6f8] outline-none transition placeholder:text-[#61708d] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15";
 
 function SubjectChips({ subjects, subjectIds }: { subjects: Subject[]; subjectIds: string[] }) {
   const labels = subjectLabels(subjects, subjectIds);
@@ -239,7 +304,7 @@ function SubjectChips({ subjects, subjectIds }: { subjects: Subject[]; subjectId
       {labels.map((label) => (
         <span
           key={label}
-          className="rounded-full border border-[#30486a] bg-[#14243c] px-2 py-0.5 text-[11px] font-bold text-[#9fc5ff]"
+          className="rounded-full border border-[#35557e] bg-[#132642] px-2.5 py-1 text-[10px] font-bold text-[#a9cbff]"
         >
           {label}
         </span>
@@ -251,6 +316,7 @@ function SubjectChips({ subjects, subjectIds }: { subjects: Subject[]; subjectId
 function TaskRow({
   task,
   subjects,
+  phases,
   depth,
   today,
   onStatus,
@@ -258,6 +324,7 @@ function TaskRow({
 }: {
   task: Task;
   subjects: Subject[];
+  phases: SubjectPhase[];
   depth: number;
   today: string;
   onStatus: (taskId: string, status: TaskStatus) => void;
@@ -268,19 +335,11 @@ function TaskRow({
   const isOverdue =
     Boolean(task.venceEl) && compareDateOnly(task.venceEl as string, today) < 0 && !isCompleted;
   const isUnplanned = isActiveTask(task) && Boolean(task.venceEl) && !task.hacerEl;
+  const phase = phases.find((item) => item.id === task.phaseId) ?? null;
 
   return (
     <article
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(task.id)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen(task.id);
-        }
-      }}
-      className="group grid w-full gap-3 rounded-lg border border-[#293852] bg-[#172033] p-3 text-left shadow-[0_1px_0_rgba(255,255,255,0.04)] transition hover:border-[#3f5578] hover:bg-[#1b2740] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 sm:grid-cols-[4px_auto_minmax(0,1fr)] sm:p-4"
+      className="group grid w-full gap-3 rounded-2xl border border-[#293b57] bg-[#142338] p-3 text-left shadow-[0_1px_0_rgba(255,255,255,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-[#466188] hover:bg-[#182a42] hover:shadow-[0_14px_35px_rgba(0,0,0,0.18)] sm:grid-cols-[4px_auto_minmax(0,1fr)] sm:p-4"
       style={{ marginLeft: depth ? `${Math.min(depth, 4) * 18}px` : undefined }}
     >
       <div
@@ -288,7 +347,7 @@ function TaskRow({
           isCompleted ? "bg-[#45546d]" : depth > 0 ? "bg-[#f6c177]" : "bg-[#8ab4f8]"
         }`}
       />
-      <label className="flex h-8 w-8 items-center justify-center rounded-md border border-[#344562] bg-[#101827] sm:mt-1">
+      <label className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#38506f] bg-[#0b1726] sm:mt-0.5">
         <input
           type="checkbox"
           checked={isCompleted}
@@ -302,7 +361,7 @@ function TaskRow({
         />
       </label>
 
-      <div className="min-w-0 space-y-3">
+      <button type="button" onClick={() => onOpen(task.id)} className="min-w-0 space-y-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#82afff]/50">
         <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
             <span
@@ -331,10 +390,12 @@ function TaskRow({
         </div>
 
         <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
+        <PhaseChip phase={phase} />
         {task.notes ? (
           <p className="line-clamp-1 text-sm text-[#9aa8c3]">{task.notes}</p>
         ) : null}
-      </div>
+        <span className="sr-only">Abrir detalle de {task.title}</span>
+      </button>
     </article>
   );
 }
@@ -342,6 +403,7 @@ function TaskRow({
 function TaskEditModal({
   task,
   subjects,
+  phases,
   today,
   onPatch,
   onStatus,
@@ -352,6 +414,7 @@ function TaskEditModal({
 }: {
   task: Task | null;
   subjects: Subject[];
+  phases: SubjectPhase[];
   today: string;
   onPatch: (taskId: string, patch: EditableTaskPatch) => void;
   onStatus: (taskId: string, status: TaskStatus) => void;
@@ -374,6 +437,8 @@ function TaskEditModal({
   const isUnplanned = isActiveTask(task) && Boolean(task.venceEl) && !task.hacerEl;
   const parentOptions = getAvailableParentTasksForTask(task.id);
   const parentTask = parentOptions.find((option) => option.id === task.parentTaskId);
+  const availablePhases = getTaskAvailablePhases(phases, task.subjectIds);
+  const selectedPhase = phases.find((phase) => phase.id === task.phaseId) ?? null;
 
   function handleClose() {
     setIsEditing(false);
@@ -519,6 +584,23 @@ function TaskEditModal({
                   </select>
                 </FieldLabel>
 
+                <FieldLabel label="Fase">
+                  <select
+                    value={task.phaseId ?? ""}
+                    onChange={(event) =>
+                      onPatch(task.id, { phaseId: event.target.value || null })
+                    }
+                    className={controlClass}
+                  >
+                    <option value="">Directamente en el asunto</option>
+                    {availablePhases.map((phase) => (
+                      <option key={phase.id} value={phase.id}>
+                        {getSubjectPath(subjects, phase.subjectId)} · {phase.name}
+                      </option>
+                    ))}
+                  </select>
+                </FieldLabel>
+
                 <FieldLabel label="Asuntos">
                   <div className="grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3">
                     <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
@@ -563,6 +645,17 @@ function TaskEditModal({
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
                     {getPriorityLabel(task.priority)}
                   </p>
+                </div>
+                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Fase</p>
+                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
+                    {getPhaseLabel(phases, task.phaseId)}
+                  </p>
+                  {selectedPhase ? (
+                    <p className="mt-1 text-xs text-[#91a0bb]">
+                      {getSubjectPath(subjects, selectedPhase.subjectId)}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Asuntos</p>
@@ -749,6 +842,7 @@ function TaskSubjectPickerModal({
 function TaskCreateModal({
   isOpen,
   subjects,
+  phases,
   tasks,
   onAddTask,
   onClose,
@@ -756,12 +850,14 @@ function TaskCreateModal({
 }: {
   isOpen: boolean;
   subjects: Subject[];
+  phases: SubjectPhase[];
   tasks: Task[];
   onAddTask: (draft: TaskDraft) => void;
   onClose: () => void;
   defaultSubjectIds?: string[];
 }) {
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(defaultSubjectIds);
+  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
   const [isSubjectPickerOpen, setIsSubjectPickerOpen] = useState(false);
 
   if (!isOpen) {
@@ -770,6 +866,7 @@ function TaskCreateModal({
 
   function handleClose() {
     setSelectedSubjectIds(defaultSubjectIds);
+    setSelectedPhaseId(null);
     onClose();
   }
 
@@ -792,6 +889,7 @@ function TaskCreateModal({
       title,
       notes,
       subjectIds: selectedSubjectIds,
+      phaseId: selectedPhaseId,
       parentTaskId: parentTaskId || null,
       hacerEl: hacerEl || null,
       venceEl: venceEl || null,
@@ -892,6 +990,22 @@ function TaskCreateModal({
               </select>
             </FieldLabel>
 
+            <FieldLabel label="Fase">
+              <select
+                value={selectedPhaseId ?? ""}
+                onChange={(event) => setSelectedPhaseId(event.target.value || null)}
+                aria-label="Fase de la tarea"
+                className={controlClass}
+              >
+                <option value="">Directamente en el asunto</option>
+                {getTaskAvailablePhases(phases, selectedSubjectIds).map((phase) => (
+                  <option key={phase.id} value={phase.id}>
+                    {getSubjectPath(subjects, phase.subjectId)} · {phase.name}
+                  </option>
+                ))}
+              </select>
+            </FieldLabel>
+
             <FieldLabel label="Asuntos">
               <div className="grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3">
                 <SubjectChips subjects={subjects} subjectIds={selectedSubjectIds} />
@@ -930,6 +1044,10 @@ function TaskCreateModal({
         selectedSubjectIds={selectedSubjectIds}
         onApply={(subjectIds) => {
           setSelectedSubjectIds(subjectIds);
+          const selectedPhase = phases.find((phase) => phase.id === selectedPhaseId);
+          if (selectedPhase && !subjectIds.includes(selectedPhase.subjectId)) {
+            setSelectedPhaseId(null);
+          }
           setIsSubjectPickerOpen(false);
         }}
         onClose={() => setIsSubjectPickerOpen(false)}
@@ -1068,6 +1186,7 @@ function SubjectEditModal({
   onRenameSubject,
   onSetSubjectHorizon,
   onSetSubjectParent,
+  onDeleteSubject,
   onClose,
 }: {
   isOpen: boolean;
@@ -1077,6 +1196,7 @@ function SubjectEditModal({
   onRenameSubject: (subjectId: string, name: string) => void;
   onSetSubjectHorizon: (subjectId: string, horizon: SubjectHorizon) => void;
   onSetSubjectParent: (subjectId: string, parentSubjectId: string | null) => void;
+  onDeleteSubject: (subjectId: string) => void;
   onClose: () => void;
 }) {
   if (!isOpen || !subject) {
@@ -1176,6 +1296,23 @@ function SubjectEditModal({
           <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
             <button
               type="button"
+              onClick={() => {
+                if (!subject) return;
+                const descendantCount = getSubjectDescendantIds(subjects, subject.id).length;
+                const message = descendantCount
+                  ? `También se borrarán ${descendantCount} subasuntos. Las tareas se conservarán sin estas asociaciones. ¿Borrar ${subject.name}?`
+                  : `Las tareas se conservarán sin esta asociación. ¿Borrar ${subject.name}?`;
+                if (window.confirm(message)) {
+                  onDeleteSubject(subject.id);
+                  onClose();
+                }
+              }}
+              className="mr-auto h-10 rounded-md border border-[#55352f] px-4 text-sm font-bold text-[#ff9d88] transition hover:bg-[#2e1716] focus:outline-none focus:ring-2 focus:ring-[#ff9d88]/30"
+            >
+              Borrar asunto
+            </button>
+            <button
+              type="button"
               onClick={onClose}
               className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
             >
@@ -1194,6 +1331,290 @@ function SubjectEditModal({
   );
 }
 
+function PhaseDatePair({
+  label,
+  start,
+  end,
+  tone,
+}: {
+  label: string;
+  start: string | null;
+  end: string | null;
+  tone: "planned" | "executed";
+}) {
+  const toneClass =
+    tone === "planned"
+      ? "border-[#30486a] bg-[#111e32] text-[#9fc5ff]"
+      : "border-[#4f5030] bg-[#211f15] text-[#f6c177]";
+
+  return (
+    <div className={`rounded-lg border px-3 py-2 ${toneClass}`}>
+      <p className="text-[10px] font-black uppercase tracking-[0.16em] opacity-70">{label}</p>
+      <p className="mt-1 font-mono text-xs font-bold">
+        {start ? formatDate(start) : "Sin inicio"} → {end ? formatDate(end) : "Sin cierre"}
+      </p>
+    </div>
+  );
+}
+
+function PhaseFormModal({
+  isOpen,
+  phase,
+  subjectName,
+  onSave,
+  onClose,
+}: {
+  isOpen: boolean;
+  phase: SubjectPhase | null;
+  subjectName: string;
+  onSave: (draft: SubjectPhaseDraft) => void;
+  onClose: () => void;
+}) {
+  const [rangeError, setRangeError] = useState<"planned" | "executed" | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const draft: SubjectPhaseDraft = {
+      name: String(data.get("name") ?? ""),
+      plannedStart: String(data.get("plannedStart") ?? "") || null,
+      executedStart: String(data.get("executedStart") ?? "") || null,
+      plannedEnd: String(data.get("plannedEnd") ?? "") || null,
+      executedEnd: String(data.get("executedEnd") ?? "") || null,
+    };
+    const nextError = getPhaseDateRangeError(draft);
+
+    if (!draft.name.trim() || nextError) {
+      setRangeError(nextError);
+      return;
+    }
+
+    onSave(draft);
+    setRangeError(null);
+    onClose();
+  }
+
+  function handleClose() {
+    setRangeError(null);
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] grid place-items-center bg-[#050812]/80 px-4 py-6 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="phase-form-title"
+    >
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#4a412c] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center justify-between gap-4 border-b border-[#383526] px-4 py-4 sm:px-5">
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#f6c177]">
+              {phase ? "Editar fase" : "Nueva fase"}
+            </p>
+            <h3 id="phase-form-title" className="mt-1 truncate text-xl font-black text-[#eef4ff]">
+              {subjectName}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Cerrar"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#4a412c] text-lg font-black text-[#d5c69e] transition hover:bg-[#282116] focus:outline-none focus:ring-2 focus:ring-[#f6c177]/30"
+          >
+            x
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="grid gap-5 p-4 sm:p-5">
+          <FieldLabel label="Nombre de la fase">
+            <input
+              name="name"
+              defaultValue={phase?.name ?? ""}
+              placeholder="Ej. Preparación"
+              autoFocus
+              required
+              className={controlClass}
+            />
+          </FieldLabel>
+
+          <div className="grid gap-4 rounded-xl border border-[#293852] bg-[#0d1422] p-4 md:grid-cols-2">
+            <div className="grid gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-[#8ab4f8]">Plan</p>
+                <p className="mt-1 text-xs text-[#8090ad]">Las fechas que orientan el trabajo.</p>
+              </div>
+              <FieldLabel label="Inicio planificado">
+                <input type="date" name="plannedStart" defaultValue={phase?.plannedStart ?? ""} className={controlClass} />
+              </FieldLabel>
+              <FieldLabel label="Finalización planificada">
+                <input type="date" name="plannedEnd" defaultValue={phase?.plannedEnd ?? ""} className={controlClass} />
+              </FieldLabel>
+              {rangeError === "planned" ? (
+                <p role="alert" className="text-xs font-bold text-[#ff9d88]">
+                  La finalización planificada no puede ser anterior al inicio.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="grid gap-3 border-t border-[#293852] pt-4 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-[#f6c177]">Ejecución</p>
+                <p className="mt-1 text-xs text-[#8090ad]">Lo que ocurrió en la práctica.</p>
+              </div>
+              <FieldLabel label="Inicio ejecutado">
+                <input type="date" name="executedStart" defaultValue={phase?.executedStart ?? ""} className={controlClass} />
+              </FieldLabel>
+              <FieldLabel label="Finalización ejecutada">
+                <input type="date" name="executedEnd" defaultValue={phase?.executedEnd ?? ""} className={controlClass} />
+              </FieldLabel>
+              {rangeError === "executed" ? (
+                <p role="alert" className="text-xs font-bold text-[#ff9d88]">
+                  La finalización ejecutada no puede ser anterior al inicio.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
+            <button type="button" onClick={handleClose} className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30">
+              Cancelar
+            </button>
+            <button type="submit" className="h-10 rounded-md border border-[#f6c177] bg-[#f6c177] px-4 text-sm font-black text-[#1b1407] transition hover:bg-[#ffd797] focus:outline-none focus:ring-2 focus:ring-[#f6c177]/40">
+              {phase ? "Guardar fase" : "Crear fase"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SubjectPhaseSection({
+  subject,
+  phases,
+  tasks,
+  onAddPhase,
+  onPatchPhase,
+  onMovePhase,
+  onDeletePhase,
+}: {
+  subject: Subject;
+  phases: SubjectPhase[];
+  tasks: Task[];
+  onAddPhase: (subjectId: string, draft: SubjectPhaseDraft) => void;
+  onPatchPhase: (phaseId: string, patch: Partial<SubjectPhaseDraft>) => void;
+  onMovePhase: (phaseId: string, direction: "up" | "down") => void;
+  onDeletePhase: (phaseId: string) => void;
+}) {
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingPhase, setEditingPhase] = useState<SubjectPhase | null>(null);
+  const orderedPhases = sortedSubjectPhases(phases, subject.id);
+
+  function openCreate() {
+    setEditingPhase(null);
+    setIsFormOpen(true);
+  }
+
+  function openEdit(phase: SubjectPhase) {
+    setEditingPhase(phase);
+    setIsFormOpen(true);
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#3c3928] bg-[#111a2b]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#383526] bg-[#151a25] px-4 py-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f6c177]">Secuencia del asunto</p>
+          <h4 className="mt-1 text-base font-black text-[#eef4ff]">Fases</h4>
+        </div>
+        <button type="button" onClick={openCreate} className="rounded-lg border border-[#66532f] bg-[#282116] px-3 py-2 text-sm font-black text-[#f6c177] transition hover:border-[#8c713d] hover:bg-[#332919] focus:outline-none focus:ring-2 focus:ring-[#f6c177]/30">
+          Nueva fase
+        </button>
+      </div>
+
+      {orderedPhases.length === 0 ? (
+        <div className="m-4 rounded-lg border border-dashed border-[#544a31] bg-[#141720] px-5 py-8 text-center">
+          <p className="text-sm font-bold text-[#d7c9a8]">Este asunto todavía no tiene fases.</p>
+          <p className="mt-1 text-xs text-[#8f8a7b]">Crea la primera para separar el plan de lo que realmente se ejecutó.</p>
+        </div>
+      ) : (
+        <ol className="relative grid gap-0 p-4 before:absolute before:bottom-8 before:left-[35px] before:top-8 before:w-px before:bg-[#66532f]">
+          {orderedPhases.map((phase, index) => {
+            const taskCount = tasks.filter((task) => task.phaseId === phase.id).length;
+
+            return (
+              <li key={phase.id} className="relative grid grid-cols-[40px_minmax(0,1fr)] gap-3 py-2">
+                <div className="relative z-[1] flex h-9 w-9 items-center justify-center rounded-full border border-[#8c713d] bg-[#282116] font-mono text-xs font-black text-[#f6c177]">
+                  {String(index + 1).padStart(2, "0")}
+                </div>
+                <article className="rounded-xl border border-[#2f3e59] bg-[#0f1726] p-3 transition hover:border-[#4a4d45] sm:p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h5 className="truncate text-base font-black text-[#eef4ff]">{phase.name}</h5>
+                      <p className="mt-1 text-xs font-semibold text-[#91a0bb]">
+                        {taskCount} {taskCount === 1 ? "tarea" : "tareas"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button type="button" onClick={() => onMovePhase(phase.id, "up")} disabled={index === 0} aria-label={`Subir ${phase.name}`} className="h-8 rounded-md border border-[#344562] px-2 text-xs font-black text-[#b9c5dd] transition hover:bg-[#182238] disabled:cursor-not-allowed disabled:opacity-30">↑</button>
+                      <button type="button" onClick={() => onMovePhase(phase.id, "down")} disabled={index === orderedPhases.length - 1} aria-label={`Bajar ${phase.name}`} className="h-8 rounded-md border border-[#344562] px-2 text-xs font-black text-[#b9c5dd] transition hover:bg-[#182238] disabled:cursor-not-allowed disabled:opacity-30">↓</button>
+                      <button type="button" onClick={() => openEdit(phase)} className="h-8 rounded-md border border-[#344562] px-2.5 text-xs font-bold text-[#b9c5dd] transition hover:bg-[#182238]">Editar</button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const message = taskCount
+                            ? `Esta fase tiene ${taskCount} ${taskCount === 1 ? "tarea" : "tareas"}. Las tareas quedarán directamente en el asunto. ¿Borrar la fase?`
+                            : "¿Borrar esta fase?";
+                          if (window.confirm(message)) onDeletePhase(phase.id);
+                        }}
+                        className="h-8 rounded-md border border-[#55352f] px-2.5 text-xs font-bold text-[#ff9d88] transition hover:bg-[#2e1716]"
+                      >
+                        Borrar
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    <PhaseDatePair label="Plan" start={phase.plannedStart} end={phase.plannedEnd} tone="planned" />
+                    <PhaseDatePair label="Ejecución" start={phase.executedStart} end={phase.executedEnd} tone="executed" />
+                  </div>
+                </article>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      <PhaseFormModal
+        key={editingPhase?.id ?? "new-phase"}
+        isOpen={isFormOpen}
+        phase={editingPhase}
+        subjectName={subject.name}
+        onSave={(draft) => {
+          if (editingPhase) onPatchPhase(editingPhase.id, draft);
+          else onAddPhase(subject.id, draft);
+        }}
+        onClose={() => setIsFormOpen(false)}
+      />
+    </section>
+  );
+}
+
 function SubjectPanel({
   subjects,
   selectedSubjectId,
@@ -1206,6 +1627,24 @@ function SubjectPanel({
   onAddChildSubject: (subjectId: string) => void;
 }) {
   const [collapsedSubjectIds, setCollapsedSubjectIds] = useState<Set<string>>(() => new Set());
+  const [subjectQuery, setSubjectQuery] = useState("");
+  const visibleSubjects = useMemo(() => {
+    const query = subjectQuery.trim().toLocaleLowerCase("es");
+
+    if (!query) return subjects;
+
+    const visibleIds = new Set<string>();
+    for (const subject of subjects) {
+      if (getSubjectPath(subjects, subject.id).toLocaleLowerCase("es").includes(query)) {
+        visibleIds.add(subject.id);
+        for (const ancestorId of getSubjectAncestorIds(subjects, subject.id)) {
+          visibleIds.add(ancestorId);
+        }
+      }
+    }
+
+    return subjects.filter((subject) => visibleIds.has(subject.id));
+  }, [subjectQuery, subjects]);
 
   function toggleSubject(subjectId: string) {
     setCollapsedSubjectIds((current) => {
@@ -1225,27 +1664,42 @@ function SubjectPanel({
     const selectedAncestors = new Set(getSubjectAncestorIds(subjects, selectedSubjectId));
 
     return new Set(
-      subjects
+      visibleSubjects
         .filter(
           (subject) =>
-            !collapsedSubjectIds.has(subject.id) || selectedAncestors.has(subject.id),
+            Boolean(subjectQuery.trim()) ||
+            !collapsedSubjectIds.has(subject.id) ||
+            selectedAncestors.has(subject.id),
         )
         .map((subject) => subject.id),
     );
-  }, [collapsedSubjectIds, selectedSubjectId, subjects]);
+  }, [collapsedSubjectIds, selectedSubjectId, subjectQuery, subjects, visibleSubjects]);
 
   const treeItems = useMemo(
-    () => getSubjectTreeItems(subjects, expandedSubjectIds),
-    [expandedSubjectIds, subjects],
+    () => getSubjectTreeItems(visibleSubjects, expandedSubjectIds),
+    [expandedSubjectIds, visibleSubjects],
   );
 
   return (
     <aside>
       {subjects.length === 0 ? (
-        <TaskEmptyState label="Sin asuntos todavia." />
+        <TaskEmptyState label="Todavía no hay asuntos." hint="Crea uno para agrupar tareas por contexto." />
       ) : (
-        <div className="space-y-1 rounded-lg border border-[#22314a] bg-[#0d1422] p-2">
-          {treeItems.map(({ subject, depth, hasChildren }) => {
+        <div className="rounded-xl border border-[#263d5c] bg-[#091522] p-2">
+          <label className="relative mb-2 block">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#69809f]">⌕</span>
+            <input
+              value={subjectQuery}
+              onChange={(event) => setSubjectQuery(event.target.value)}
+              placeholder="Filtrar asuntos"
+              aria-label="Filtrar asuntos"
+              className="h-10 w-full rounded-lg border border-[#2b4261] bg-[#0d1a2a] pl-9 pr-3 text-sm font-semibold text-[#e7eef9] outline-none transition placeholder:text-[#637794] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
+            />
+          </label>
+          <div className="hide-scrollbar max-h-[min(55vh,620px)] space-y-1 overflow-y-auto pr-0.5">
+          {treeItems.length === 0 ? (
+            <p className="px-3 py-8 text-center text-sm text-[#7f91ad]">No hay asuntos que coincidan.</p>
+          ) : treeItems.map(({ subject, depth, hasChildren }) => {
             const isSelected = selectedSubjectId === subject.id;
             const isExpanded = expandedSubjectIds.has(subject.id);
 
@@ -1265,8 +1719,8 @@ function SubjectPanel({
                 <div
                   className={`grid grid-cols-[28px_minmax(0,1fr)_32px] items-center gap-2 rounded-lg border p-2 transition ${
                     isSelected
-                      ? "border-[#8ab4f8] bg-[#142a47]"
-                      : "border-[#24344f] bg-[#101827] hover:border-[#3f5578] hover:bg-[#182238]"
+                      ? "border-[#5588ce] bg-[#17345a]"
+                      : "border-transparent bg-[#0d1a2a] hover:border-[#345171] hover:bg-[#14273d]"
                   }`}
                 >
                   <button
@@ -1281,7 +1735,7 @@ function SubjectPanel({
                     }
                     className={`flex h-7 w-7 items-center justify-center rounded-md border text-xs font-black transition focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 ${
                       hasChildren
-                        ? "border-[#31415e] bg-[#111a2b] text-[#8ab4f8] hover:bg-[#173050]"
+                        ? "border-[#314966] bg-[#102038] text-[#82afff] hover:bg-[#173050]"
                         : "border-transparent bg-transparent text-[#52617b]"
                     }`}
                   >
@@ -1291,7 +1745,7 @@ function SubjectPanel({
                   <button
                     type="button"
                     onClick={() => onSelectSubject(subject.id)}
-                    className="min-w-0 truncate text-left font-semibold text-[#eef4ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+                    className="min-w-0 truncate text-left text-sm font-semibold text-[#e8effa] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
                   >
                     {subject.name}
                   </button>
@@ -1301,7 +1755,7 @@ function SubjectPanel({
                     onClick={() => onAddChildSubject(subject.id)}
                     aria-label={`Agregar asunto dentro de ${subject.name}`}
                     title={`Agregar asunto dentro de ${subject.name}`}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-[#31415e] bg-[#111a2b] text-sm font-black text-[#8ab4f8] transition hover:bg-[#173050] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+                    className="flex h-7 w-7 items-center justify-center rounded-md border border-[#314966] bg-[#102038] text-sm font-black text-[#82afff] transition hover:bg-[#173050] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
                   >
                     +
                   </button>
@@ -1309,6 +1763,7 @@ function SubjectPanel({
               </div>
             );
           })}
+          </div>
         </div>
       )}
     </aside>
@@ -1440,6 +1895,7 @@ export default function TaskManager() {
   const [isSubjectEditModalOpen, setIsSubjectEditModalOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [subjectViewMode, setSubjectViewMode] = useState<SubjectViewMode>("tree");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const activeTasks = workspace.tasks.filter(isActiveTask);
   const selectedSubject = selectedSubjectId
@@ -1448,6 +1904,42 @@ export default function TaskManager() {
   const selectedTask = selectedTaskId
     ? (workspace.tasks.find((task) => task.id === selectedTaskId) ?? null)
     : null;
+
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target?.isContentEditable;
+
+      if (event.key === "Escape") {
+        setSelectedTaskId(null);
+        setIsTaskModalOpen(false);
+        setIsSubjectModalOpen(false);
+        setIsSubjectEditModalOpen(false);
+        return;
+      }
+
+      if (isTyping) {
+        return;
+      }
+
+      if (event.key === "/") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+
+      if (event.key.toLowerCase() === "n" && activeView !== "subjects") {
+        event.preventDefault();
+        setIsTaskModalOpen(true);
+      }
+    }
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [activeView]);
 
   const visibleTasks = useMemo(() => {
     if (activeView === "today") {
@@ -1480,19 +1972,19 @@ export default function TaskManager() {
   const filteredTasks = useMemo(
     () =>
       visibleTasks.filter((task) =>
-        taskMatchesQuery(task, workspace.tasks, workspace.subjects, searchQuery),
+        taskMatchesQuery(task, workspace.tasks, workspace.subjects, workspace.phases, searchQuery),
       ),
-    [searchQuery, visibleTasks, workspace.tasks, workspace.subjects],
+    [searchQuery, visibleTasks, workspace.tasks, workspace.subjects, workspace.phases],
   );
   const filteredTaskItems = useMemo(() => taskTreeItems(filteredTasks), [filteredTasks]);
 
-  const navItems = [
-    { key: "today" as const, count: workspace.views.today.length },
-    { key: "inbox" as const, count: workspace.views.inbox.length },
-    { key: "upcoming" as const, count: workspace.views.upcoming.length },
-    { key: "waiting" as const, count: workspace.views.waiting.length },
-    { key: "completed" as const, count: workspace.views.completed.length },
-    { key: "subjects" as const, count: workspace.subjects.length },
+  const navItems: { key: ViewKey; count: number }[] = [
+    { key: "today", count: workspace.views.today.length },
+    { key: "inbox", count: workspace.views.inbox.length },
+    { key: "upcoming", count: workspace.views.upcoming.length },
+    { key: "waiting", count: workspace.views.waiting.length },
+    { key: "completed", count: workspace.views.completed.length },
+    { key: "subjects", count: workspace.subjects.length },
   ];
 
   const heading = activeView === "subjects" ? viewLabels.subjects : viewLabels[activeView];
@@ -1505,20 +1997,49 @@ export default function TaskManager() {
         : "No hay tareas en esta vista.";
   const defaultTaskSubjectIds =
     activeView === "subjects" && selectedSubjectId ? [selectedSubjectId] : [];
+  const totalTasks = activeTasks.length + workspace.views.completed.length;
+  const completionRate = totalTasks
+    ? Math.round((workspace.views.completed.length / totalTasks) * 100)
+    : 0;
 
   return (
-    <main className="min-h-screen bg-[#0b1018] text-[#e8eefc]">
-      <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
-        <nav className="border-b border-[#24324b] bg-[#111827] px-4 py-4 lg:border-b-0 lg:border-r lg:px-5">
-          <div className="mb-6 rounded-xl border border-[#26344d] bg-[#0d1422] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.24)]">
-            <p className="font-mono text-xs font-bold uppercase text-[#8ab4f8]">Epixodo</p>
-            <h1 className="mt-2 text-2xl font-black text-[#eef4ff]">Tareas personales</h1>
-            <p className="mt-3 text-sm leading-6 text-[#9dabc6]">
-              {activeTasks.length} activas / {workspace.views.completed.length} completadas
-            </p>
+    <main className="relative min-h-screen overflow-x-hidden bg-[#07111d] text-[#eaf1fb]">
+      <div aria-hidden="true" className="app-grid pointer-events-none absolute inset-0" />
+      {!workspace.isLoaded ? (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-[#07111d]">
+          <div className="text-center">
+            <span className="mx-auto flex h-12 w-12 animate-pulse items-center justify-center rounded-2xl bg-[#82afff] font-mono font-black text-[#07111d]">E</span>
+            <p className="mt-4 text-sm font-bold text-[#c8d5e8]">Abriendo tu espacio</p>
+            <p className="mt-1 text-xs text-[#7185a3]">Sincronizando tareas y asuntos…</p>
+          </div>
+        </div>
+      ) : null}
+      <div className="relative grid min-h-screen grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[248px_minmax(0,1fr)] lg:grid-rows-1">
+        <nav aria-label="Vistas principales" className="min-w-0 max-w-full border-b border-[#20334d] bg-[#0b1624]/95 px-3 py-3 backdrop-blur-xl lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-b-0 lg:border-r lg:px-4 lg:py-5">
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#253a57] bg-[#0d1a2a] px-3 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.2)] lg:block lg:px-4 lg:py-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#82afff] font-mono text-sm font-black text-[#07111d] shadow-[0_8px_22px_rgba(130,175,255,0.25)]">E</span>
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-[#82afff]">Epixodo</p>
+                <h1 className="truncate text-base font-black tracking-[-0.02em] text-[#f4f7fc] lg:text-lg">Mi espacio</h1>
+              </div>
+            </div>
+            <div className="hidden lg:mt-5 lg:block">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="font-mono text-2xl font-black text-[#f4f7fc]">{activeTasks.length}</p>
+                  <p className="text-xs font-semibold text-[#8192ad]">tareas activas</p>
+                </div>
+                <span className="font-mono text-xs font-bold text-[#63d3a5]">{completionRate}% resuelto</span>
+              </div>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#1b2c43]">
+                <span className="block h-full rounded-full bg-[#63d3a5] transition-[width] duration-500" style={{ width: `${completionRate}%` }} />
+              </div>
+            </div>
+            <span className="shrink-0 rounded-full border border-[#2f496c] bg-[#13233a] px-2.5 py-1 font-mono text-xs font-black text-[#bcd3f8] lg:hidden">{activeTasks.length}</span>
           </div>
 
-          <div className="grid gap-1.5">
+          <div className="hide-scrollbar -mx-3 mt-3 flex gap-2 overflow-x-auto px-3 pb-1 lg:mx-0 lg:mt-6 lg:grid lg:gap-1 lg:overflow-visible lg:px-0 lg:pb-0">
             {navItems.map((item) => {
               const isActive = activeView === item.key;
 
@@ -1527,19 +2048,17 @@ export default function TaskManager() {
                   key={item.key}
                   type="button"
                   onClick={() => setActiveView(item.key)}
-                  className={`grid h-11 grid-cols-[4px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-0 text-left text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 ${
+                  className={`flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-left text-sm font-bold transition duration-200 focus:outline-none focus:ring-2 focus:ring-[#82afff]/30 lg:grid lg:h-11 lg:w-full lg:grid-cols-[20px_minmax(0,1fr)_auto] lg:gap-3 ${
                     isActive
-                      ? "border-[#2f5f9a] bg-[#142a47] text-[#eaf2ff]"
-                      : "border-transparent bg-transparent text-[#a8b5ce] hover:border-[#293852] hover:bg-[#182238] hover:text-[#eef4ff]"
+                      ? "border-[#3c68a5] bg-[#17345a] text-[#f2f6ff] shadow-[inset_0_0_0_1px_rgba(130,175,255,0.08)]"
+                      : "border-[#20334d] bg-[#0d1a2a] text-[#9fb0c9] hover:border-[#365176] hover:bg-[#13233a] hover:text-[#eef4ff] lg:border-transparent lg:bg-transparent"
                   }`}
                 >
-                  <span
-                    className={`h-7 rounded-full ${isActive ? "bg-[#8ab4f8]" : "bg-transparent"}`}
-                  />
+                  <span className={isActive ? "text-[#82afff]" : "text-[#7185a3]"}><ViewIcon view={item.key} /></span>
                   <span className="truncate">{viewLabels[item.key]}</span>
                   <span
-                    className={`mr-3 rounded-full px-2 py-0.5 text-xs ${
-                      isActive ? "bg-[#8ab4f8] text-[#07111f]" : "bg-[#22304a] text-[#b8c4dc]"
+                    className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] ${
+                      isActive ? "bg-[#82afff] text-[#07111f]" : "bg-[#1d304a] text-[#aebbd0]"
                     }`}
                   >
                     {item.count}
@@ -1548,41 +2067,53 @@ export default function TaskManager() {
               );
             })}
           </div>
+
+          <div className="mt-auto hidden rounded-2xl border border-[#243955] bg-[#0d1a2a] p-3 lg:block">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Atajos</p>
+            <div className="mt-2 grid gap-2 text-xs text-[#91a3bc]">
+              <div className="flex items-center justify-between"><span>Buscar</span><kbd className="rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[#cad8ed]">/</kbd></div>
+              <div className="flex items-center justify-between"><span>Nueva tarea</span><kbd className="rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[#cad8ed]">N</kbd></div>
+              <div className="flex items-center justify-between"><span>Cerrar</span><kbd className="rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[#cad8ed]">Esc</kbd></div>
+            </div>
+          </div>
         </nav>
 
         <div className="min-w-0">
-          <header className="sticky top-0 z-10 border-b border-[#24324b] bg-[#0b1018]/92 px-4 py-3 backdrop-blur md:px-6">
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-              <label className="relative block">
-                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-[#8ab4f8]">
-                  /
+          <header className="sticky top-0 z-20 border-b border-[#20334d] bg-[#07111d]/88 px-4 py-3 backdrop-blur-xl md:px-6">
+            <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3">
+              <label className="relative min-w-[220px] flex-1">
+                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7890b2]">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
                 </span>
                 <input
+                  ref={searchRef}
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Buscar tareas, notas o asuntos"
+                  placeholder="Buscar en tu espacio…"
                   aria-label="Buscar tareas"
-                  className="h-12 w-full rounded-xl border border-[#30405d] bg-[#111a2b] pl-10 pr-4 text-sm font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#73809a] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
+                  className="h-11 w-full rounded-xl border border-[#2b4261] bg-[#0d1a2a] pl-10 pr-14 text-sm font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#667b9a] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
                 />
+                <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#8295b0] sm:block">/</kbd>
               </label>
-              <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-[#9dabc6] xl:justify-end">
-                <span className="rounded-full border border-[#31415e] bg-[#111a2b] px-3 py-2 font-mono">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#9dabc6]">
+                <span className="hidden rounded-full border border-[#2c4260] bg-[#0d1a2a] px-3 py-2 font-mono sm:inline-flex">
                   {workspace.today}
                 </span>
                 <span
-                  className={`rounded-full border px-3 py-2 ${
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 ${
                     workspace.syncError
                       ? "border-[#7a3d32] bg-[#2e1716] text-[#ff9d88]"
                       : workspace.isSaving
-                        ? "border-[#315887] bg-[#132844] text-[#8ab4f8]"
-                        : "border-[#2e5c44] bg-[#14291f] text-[#8fd0a8]"
+                        ? "border-[#315887] bg-[#132844] text-[#82afff]"
+                        : "border-[#2d674f] bg-[#102b23] text-[#63d3a5]"
                   }`}
                 >
+                  <span className={`h-1.5 w-1.5 rounded-full ${workspace.syncError ? "bg-[#ff9d88]" : workspace.isSaving ? "animate-pulse bg-[#82afff]" : "bg-[#63d3a5]"}`} />
                   {workspace.syncError
-                    ? "PocketBase sin sincronizar"
+                    ? "Sin sincronizar"
                     : workspace.isSaving
                       ? "Sincronizando"
-                      : "PocketBase conectado"}
+                      : "Sincronizado"}
                 </span>
               </div>
             </div>
@@ -1593,21 +2124,19 @@ export default function TaskManager() {
             ) : null}
           </header>
 
-          <div
-            className="grid gap-5 p-4 md:p-6"
-          >
-            <section className="min-w-0 space-y-5">
-              <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#24324b] pb-4">
+          <div className="mx-auto grid max-w-[1500px] gap-5 p-4 md:p-6 lg:p-8">
+            <section key={activeView} className="view-enter min-w-0 space-y-6">
+              <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#20334d] pb-5">
                 <div>
-                  <p className="text-sm font-semibold text-[#91a0bb]">
-                    {hasSearch ? `${filteredTasks.length} de ${visibleTasks.length}` : `${visibleTasks.length} tareas`}
+                  <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
+                    {hasSearch ? `${filteredTasks.length} de ${visibleTasks.length} resultados` : `${visibleTasks.length} ${visibleTasks.length === 1 ? "tarea" : "tareas"}`}
                   </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-3">
-                    <h2 className="text-3xl font-black text-[#eef4ff] md:text-4xl">
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <h2 className="text-3xl font-black tracking-[-0.04em] text-[#f4f7fc] md:text-5xl">
                       {heading}
                     </h2>
                     {activeView === "subjects" ? (
-                      <div className="grid grid-cols-2 rounded-lg border border-[#263852] bg-[#0d1422] p-1">
+                      <div className="grid grid-cols-2 rounded-xl border border-[#293f5e] bg-[#0d1a2a] p-1">
                         {[
                           { key: "tree" as const, label: "Arbol" },
                           { key: "horizon" as const, label: "Horizonte" },
@@ -1618,8 +2147,8 @@ export default function TaskManager() {
                             onClick={() => setSubjectViewMode(item.key)}
                             className={`h-9 px-3 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 ${
                               subjectViewMode === item.key
-                                ? "rounded-md bg-[#8ab4f8] text-[#07111f]"
-                                : "rounded-md text-[#b9c5dd] hover:bg-[#182238]"
+                                ? "rounded-lg bg-[#82afff] text-[#07111f] shadow-[0_5px_16px_rgba(130,175,255,0.18)]"
+                                : "rounded-lg text-[#aebbd0] hover:bg-[#16283f]"
                             }`}
                           >
                             {item.label}
@@ -1628,13 +2157,14 @@ export default function TaskManager() {
                       </div>
                     ) : null}
                   </div>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#8293ad]">{viewDescriptions[activeView]}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {hasSearch ? (
                     <button
                       type="button"
                       onClick={() => setSearchQuery("")}
-                      className="rounded-lg border border-[#31415e] px-3 py-2 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+                      className="rounded-xl border border-[#314966] px-3 py-2.5 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#142338] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
                     >
                       Limpiar busqueda
                     </button>
@@ -1643,9 +2173,9 @@ export default function TaskManager() {
                     <button
                       type="button"
                       onClick={() => setIsTaskModalOpen(true)}
-                      className="rounded-lg border border-[#8ab4f8] bg-[#8ab4f8] px-4 py-2 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#82afff] bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] shadow-[0_10px_24px_rgba(130,175,255,0.18)] transition hover:-translate-y-0.5 hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40"
                     >
-                      Nueva tarea
+                      <span className="text-lg leading-none">+</span> Crear tarea
                     </button>
                   ) : null}
                 </div>
@@ -1653,24 +2183,27 @@ export default function TaskManager() {
 
               {activeView === "subjects" ? (
                 <div
-                  className={`grid gap-5 ${
+                  className={`grid gap-6 ${
                     subjectViewMode === "horizon"
                       ? "xl:grid-cols-[minmax(520px,1fr)_minmax(360px,520px)]"
-                      : "xl:grid-cols-[minmax(320px,460px)_minmax(0,1fr)]"
+                      : "xl:grid-cols-[minmax(300px,400px)_minmax(0,1fr)]"
                   }`}
                 >
-                  <div className="rounded-xl border border-[#2b3a55] bg-[#111a2b] p-4">
+                  <div className="rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.14)] xl:sticky xl:top-24 xl:self-start">
                     <div className="mb-4 flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-black uppercase text-[#dce6f8]">Asuntos</h3>
+                      <div>
+                        <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Contextos</p>
+                        <h3 className="mt-1 text-base font-black text-[#e9f0fb]">Asuntos</h3>
+                      </div>
                       <button
                         type="button"
                         onClick={() => {
                           setNewSubjectParentId(null);
                           setIsSubjectModalOpen(true);
                         }}
-                        className="rounded-lg border border-[#344562] px-3 py-2 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+                        className="rounded-xl border border-[#355174] bg-[#13233a] px-3 py-2 text-sm font-bold text-[#c6d4e9] transition hover:border-[#4b6b94] hover:bg-[#192d46] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
                       >
-                        Nuevo asunto
+                        + Asunto
                       </button>
                     </div>
                     {subjectViewMode === "tree" ? (
@@ -1699,44 +2232,56 @@ export default function TaskManager() {
                     )}
                   </div>
 
-                  <div className="min-w-0 space-y-5">
+                  <div className="min-w-0 space-y-6">
                     {selectedSubject ? (
-                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#24344f] bg-[#111a2b] px-4 py-3">
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold uppercase text-[#8ab4f8]">
-                            Tareas del asunto
-                          </p>
-                          <h3 className="mt-1 truncate text-lg font-black text-[#eef4ff]">
-                            {getSubjectPath(workspace.subjects, selectedSubject.id)}
-                          </h3>
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#315177] bg-[linear-gradient(135deg,#10233a,#0d1a2a)] px-4 py-4 shadow-[0_14px_35px_rgba(0,0,0,0.14)] sm:px-5">
+                          <div className="min-w-0">
+                            <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">
+                              Asunto activo
+                            </p>
+                            <h3 className="mt-1 truncate text-xl font-black tracking-[-0.02em] text-[#f4f7fc]">
+                              {getSubjectPath(workspace.subjects, selectedSubject.id)}
+                            </h3>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsSubjectEditModalOpen(true)}
+                              className="rounded-xl border border-[#3a5578] px-4 py-2.5 text-sm font-bold text-[#c1cee2] transition hover:bg-[#182a42] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                            >
+                              Editar asunto
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsTaskModalOpen(true)}
+                              className="rounded-xl border border-[#82afff] bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] transition hover:-translate-y-0.5 hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40"
+                            >
+                              Nueva tarea
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setIsSubjectEditModalOpen(true)}
-                            className="rounded-lg border border-[#344562] px-4 py-2 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-                          >
-                            Editar asunto
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIsTaskModalOpen(true)}
-                            className="rounded-lg border border-[#8ab4f8] bg-[#8ab4f8] px-4 py-2 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
-                          >
-                            Nueva tarea
-                          </button>
-                        </div>
-                      </div>
+                        <SubjectPhaseSection
+                          subject={selectedSubject}
+                          phases={workspace.phases}
+                          tasks={workspace.tasks}
+                          onAddPhase={workspace.addPhase}
+                          onPatchPhase={workspace.patchPhase}
+                          onMovePhase={workspace.movePhase}
+                          onDeletePhase={workspace.deletePhase}
+                        />
+                      </>
                     ) : null}
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {filteredTaskItems.length === 0 ? (
-                        <TaskEmptyState label={emptyLabel} />
+                        <TaskEmptyState label={emptyLabel} hint={selectedSubject ? "Crea una tarea para empezar a mover este asunto." : "Selecciona un asunto de la lista para ver su trabajo."} />
                       ) : (
                         filteredTaskItems.map(({ task, depth }) => (
                           <TaskRow
                             key={task.id}
                             task={task}
                             subjects={workspace.subjects}
+                            phases={workspace.phases}
                             depth={depth}
                             today={workspace.today}
                             onStatus={workspace.setTaskStatus}
@@ -1748,15 +2293,16 @@ export default function TaskManager() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {filteredTaskItems.length === 0 ? (
-                    <TaskEmptyState label={emptyLabel} />
+                    <TaskEmptyState label={emptyLabel} hint={hasSearch ? "Prueba con otro término o limpia la búsqueda." : "Usa “Crear tarea” cuando quieras capturar algo nuevo."} />
                   ) : (
                     filteredTaskItems.map(({ task, depth }) => (
                       <TaskRow
                         key={task.id}
                         task={task}
                         subjects={workspace.subjects}
+                        phases={workspace.phases}
                         depth={depth}
                         today={workspace.today}
                         onStatus={workspace.setTaskStatus}
@@ -1774,6 +2320,7 @@ export default function TaskManager() {
         key={`create-task-${defaultTaskSubjectIds.join("|")}`}
         isOpen={isTaskModalOpen}
         subjects={workspace.subjects}
+        phases={workspace.phases}
         tasks={workspace.tasks}
         onAddTask={workspace.addTask}
         onClose={() => setIsTaskModalOpen(false)}
@@ -1782,6 +2329,7 @@ export default function TaskManager() {
       <TaskEditModal
         task={selectedTask}
         subjects={workspace.subjects}
+        phases={workspace.phases}
         today={workspace.today}
         onPatch={workspace.patchTask}
         onStatus={workspace.setTaskStatus}
@@ -1805,6 +2353,10 @@ export default function TaskManager() {
         onRenameSubject={workspace.renameSubject}
         onSetSubjectHorizon={workspace.setSubjectHorizon}
         onSetSubjectParent={workspace.setSubjectParent}
+        onDeleteSubject={(subjectId) => {
+          workspace.deleteSubject(subjectId);
+          setSelectedSubjectId(null);
+        }}
         onClose={() => setIsSubjectEditModalOpen(false)}
       />
     </main>

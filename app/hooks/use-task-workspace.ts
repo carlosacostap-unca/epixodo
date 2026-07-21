@@ -9,10 +9,12 @@ import {
 } from "../lib/task-storage";
 import {
   createSubject,
+  createSubjectPhase,
   emptyWorkspace,
   getAvailableParentTasks,
   getCompletedTasks,
   getInboxTasks,
+  getPhaseDateRangeError,
   getSubjectDescendantIds,
   getSubjectTasks,
   getTaskDescendantIds,
@@ -22,10 +24,17 @@ import {
   getUpcomingTasks,
   getWaitingTasks,
   normalizeTaskDraft,
+  normalizeTaskPhaseAssignment,
+  reorderSubjectPhases,
+  removePhaseFromWorkspace,
+  removeSubjectFromWorkspace,
+  sortedSubjectPhases,
   uniqueIds,
   updateTaskStatus,
   type Subject,
   type SubjectHorizon,
+  type SubjectPhase,
+  type SubjectPhaseDraft,
   type Task,
   type TaskDraft,
   type TaskPriority,
@@ -39,11 +48,19 @@ type TaskPatch = Partial<
     | "title"
     | "notes"
     | "subjectIds"
+    | "phaseId"
     | "parentTaskId"
     | "hacerEl"
     | "venceEl"
     | "priority"
     | "status"
+  >
+>;
+
+type PhasePatch = Partial<
+  Pick<
+    SubjectPhase,
+    "name" | "plannedStart" | "executedStart" | "plannedEnd" | "executedEnd"
   >
 >;
 
@@ -61,16 +78,24 @@ export function useTaskWorkspace() {
     async function hydrateWorkspace() {
       const localWorkspace = loadWorkspace();
 
-      if (localWorkspace.tasks.length > 0 || localWorkspace.subjects.length > 0) {
+      if (
+        localWorkspace.tasks.length > 0 ||
+        localWorkspace.subjects.length > 0 ||
+        localWorkspace.phases.length > 0
+      ) {
         setWorkspace(localWorkspace);
       }
 
       try {
         const remoteWorkspace = await loadRemoteWorkspace();
         const hasRemoteData =
-          remoteWorkspace.tasks.length > 0 || remoteWorkspace.subjects.length > 0;
+          remoteWorkspace.tasks.length > 0 ||
+          remoteWorkspace.subjects.length > 0 ||
+          remoteWorkspace.phases.length > 0;
         const hasLocalData =
-          localWorkspace.tasks.length > 0 || localWorkspace.subjects.length > 0;
+          localWorkspace.tasks.length > 0 ||
+          localWorkspace.subjects.length > 0 ||
+          localWorkspace.phases.length > 0;
         const nextWorkspace = hasRemoteData ? remoteWorkspace : localWorkspace;
 
         if (isCancelled) {
@@ -153,10 +178,18 @@ export function useTaskWorkspace() {
       return;
     }
 
-    setWorkspace((current) => ({
-      ...current,
-      tasks: [normalizeTaskDraft(draft), ...current.tasks],
-    }));
+    setWorkspace((current) => {
+      const assignment = normalizeTaskPhaseAssignment(
+        current.phases,
+        draft.subjectIds,
+        draft.phaseId,
+      );
+
+      return {
+        ...current,
+        tasks: [normalizeTaskDraft({ ...draft, ...assignment }), ...current.tasks],
+      };
+    });
   }
 
   function patchTask(taskId: string, patch: TaskPatch) {
@@ -177,12 +210,27 @@ export function useTaskWorkspace() {
           !descendantTaskIds.has(requestedParentTaskId)
             ? requestedParentTaskId
             : null;
+        const requestedSubjectIds =
+          "subjectIds" in patch ? uniqueIds(patch.subjectIds) : task.subjectIds;
+        const requestedPhaseId = "phaseId" in patch ? patch.phaseId || null : task.phaseId;
+        const phase = requestedPhaseId
+          ? current.phases.find((item) => item.id === requestedPhaseId)
+          : null;
+        const assignment =
+          "phaseId" in patch && phase
+            ? normalizeTaskPhaseAssignment(current.phases, requestedSubjectIds, phase.id)
+            : {
+                subjectIds: requestedSubjectIds,
+                phaseId:
+                  phase && requestedSubjectIds.includes(phase.subjectId) ? phase.id : null,
+              };
         const updated = {
           ...task,
           ...patch,
           title: patch.title?.trim() ?? task.title,
           notes: patch.notes ?? task.notes,
-          subjectIds: "subjectIds" in patch ? uniqueIds(patch.subjectIds) : task.subjectIds,
+          subjectIds: assignment.subjectIds,
+          phaseId: assignment.phaseId,
           parentTaskId: safeParentTaskId,
           hacerEl: "hacerEl" in patch ? patch.hacerEl || null : task.hacerEl,
           venceEl: "venceEl" in patch ? patch.venceEl || null : task.venceEl,
@@ -283,6 +331,89 @@ export function useTaskWorkspace() {
     });
   }
 
+  function deleteSubject(subjectId: string) {
+    setWorkspace((current) => removeSubjectFromWorkspace(current, subjectId));
+  }
+
+  function addPhase(subjectId: string, draft: SubjectPhaseDraft) {
+    if (!draft.name.trim() || getPhaseDateRangeError(draft)) {
+      return;
+    }
+
+    setWorkspace((current) => {
+      if (!current.subjects.some((subject) => subject.id === subjectId)) {
+        return current;
+      }
+
+      const nextOrder = sortedSubjectPhases(current.phases, subjectId).length;
+      return {
+        ...current,
+        phases: [...current.phases, createSubjectPhase(subjectId, draft, nextOrder)],
+      };
+    });
+  }
+
+  function patchPhase(phaseId: string, patch: PhasePatch) {
+    setWorkspace((current) => {
+      const phase = current.phases.find((item) => item.id === phaseId);
+
+      if (!phase) {
+        return current;
+      }
+
+      const updated = {
+        ...phase,
+        ...patch,
+        name: patch.name?.trim() ?? phase.name,
+        plannedStart: "plannedStart" in patch ? patch.plannedStart || null : phase.plannedStart,
+        executedStart:
+          "executedStart" in patch ? patch.executedStart || null : phase.executedStart,
+        plannedEnd: "plannedEnd" in patch ? patch.plannedEnd || null : phase.plannedEnd,
+        executedEnd: "executedEnd" in patch ? patch.executedEnd || null : phase.executedEnd,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (!updated.name || getPhaseDateRangeError(updated)) {
+        return current;
+      }
+
+      return {
+        ...current,
+        phases: current.phases.map((item) => (item.id === phaseId ? updated : item)),
+      };
+    });
+  }
+
+  function movePhase(phaseId: string, direction: "up" | "down") {
+    setWorkspace((current) => {
+      const phase = current.phases.find((item) => item.id === phaseId);
+
+      if (!phase) {
+        return current;
+      }
+
+      const ordered = sortedSubjectPhases(current.phases, phase.subjectId);
+      const index = ordered.findIndex((item) => item.id === phaseId);
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+
+      if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) {
+        return current;
+      }
+
+      const nextIds = ordered.map((item) => item.id);
+      [nextIds[index], nextIds[targetIndex]] = [nextIds[targetIndex], nextIds[index]];
+
+      return {
+        ...current,
+        phases: reorderSubjectPhases(current.phases, phase.subjectId, nextIds),
+      };
+    });
+  }
+
+  function deletePhase(phaseId: string) {
+    setWorkspace((current) => removePhaseFromWorkspace(current, phaseId));
+  }
+
   function getTasksForSubject(subjectId: string) {
     return getSubjectTasks(workspace.tasks, workspace.subjects, subjectId);
   }
@@ -316,6 +447,11 @@ export function useTaskWorkspace() {
     renameSubject,
     setSubjectHorizon,
     setSubjectParent,
+    deleteSubject,
+    addPhase,
+    patchPhase,
+    movePhase,
+    deletePhase,
     getTasksForSubject,
     getAvailableParentTasksForTask,
     getAvailableParentSubjects,
@@ -323,4 +459,4 @@ export function useTaskWorkspace() {
 }
 
 export type TaskWorkspace = ReturnType<typeof useTaskWorkspace>;
-export type { Subject, Task };
+export type { Subject, SubjectPhase, Task };

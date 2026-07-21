@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Epixodo | Tareas personales",
-  description: "Gestor personal de tareas con proyectos opcionales.",
+  description: "Organiza tareas, asuntos y fases en un espacio de trabajo personal.",
 };
 
 export default function RootLayout({
