@@ -38,6 +38,7 @@ export type SubjectEventKind = "milestone" | "deadline";
 export type SubjectEvent = {
   id: string;
   subjectId: string;
+  phaseId: string | null;
   kind: SubjectEventKind;
   description: string;
   date: DateOnly;
@@ -45,7 +46,9 @@ export type SubjectEvent = {
   updatedAt: string;
 };
 
-export type SubjectEventDraft = Pick<SubjectEvent, "kind" | "description" | "date">;
+export type SubjectEventDraft = Pick<SubjectEvent, "kind" | "description" | "date"> & {
+  phaseId?: string | null;
+};
 
 export type Task = {
   id: string;
@@ -160,7 +163,8 @@ export function isValidSubjectEventDraft(draft: SubjectEventDraft): boolean {
   return (
     isSubjectEventKind(draft.kind) &&
     Boolean(draft.description.trim()) &&
-    isValidDateOnly(draft.date)
+    isValidDateOnly(draft.date) &&
+    (draft.phaseId === undefined || draft.phaseId === null || typeof draft.phaseId === "string")
   );
 }
 
@@ -232,6 +236,7 @@ export function createSubjectEvent(
   return {
     id: createId("event"),
     subjectId,
+    phaseId: draft.phaseId || null,
     kind: draft.kind,
     description: draft.description.trim(),
     date: draft.date,
@@ -248,6 +253,7 @@ export function patchSubjectEvent(
   const updated: SubjectEvent = {
     ...event,
     ...patch,
+    phaseId: patch.phaseId === undefined ? event.phaseId : patch.phaseId,
     description: patch.description?.trim() ?? event.description,
     updatedAt: now.toISOString(),
   };
@@ -408,6 +414,9 @@ export function removePhaseFromWorkspace(
     phases,
     tasks: workspace.tasks.map((task) =>
       task.phaseId === phaseId ? { ...task, phaseId: null, updatedAt } : task,
+    ),
+    subjectEvents: (workspace.subjectEvents ?? []).map((event) =>
+      event.phaseId === phaseId ? { ...event, phaseId: null, updatedAt } : event,
     ),
   };
 }

@@ -131,6 +131,7 @@ function toSubjectEvent(value: unknown): SubjectEvent | null {
   return {
     id: value.id,
     subjectId: value.subjectId,
+    phaseId: typeof value.phaseId === "string" ? value.phaseId : null,
     kind: value.kind,
     description: repairMojibake(value.description.trim()),
     date: value.date,
@@ -242,7 +243,15 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
   const subjectEvents = (Array.isArray(value.subjectEvents) ? value.subjectEvents : [])
     .map(toSubjectEvent)
     .filter((event): event is SubjectEvent => Boolean(event))
-    .filter((event) => subjectIds.has(event.subjectId));
+    .filter((event) => subjectIds.has(event.subjectId))
+    .map((event) => {
+      const phase = event.phaseId ? phasesById.get(event.phaseId) : null;
+
+      return {
+        ...event,
+        phaseId: phase?.subjectId === event.subjectId ? phase.id : null,
+      };
+    });
   const taskIds = new Set<string>();
   const tasks = value.tasks
     .map(toTask)

@@ -2,6 +2,7 @@
 
 import { type DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTaskWorkspace } from "../hooks/use-task-workspace";
+import LogoutButton from "./logout-button";
 import {
   compareDateOnly,
   getPhaseDateRangeError,
@@ -30,7 +31,7 @@ import {
   type TaskStatus,
 } from "../lib/tasks";
 
-type ViewKey = "today" | "inbox" | "upcoming" | "waiting" | "completed" | "subjects";
+type ViewKey = "today" | "inbox" | "upcoming" | "waiting" | "completed" | "calendar" | "subjects";
 type SubjectViewMode = "folders" | "horizon";
 type EditableTaskPatch = Partial<
   Pick<
@@ -59,6 +60,7 @@ const viewLabels: Record<ViewKey, string> = {
   upcoming: "Proximas",
   waiting: "Esperando",
   completed: "Completadas",
+  calendar: "Calendario",
   subjects: "Asuntos",
 };
 
@@ -68,6 +70,7 @@ const viewDescriptions: Record<ViewKey, string> = {
   upcoming: "El trabajo que se acerca en los próximos días.",
   waiting: "Tareas detenidas por una respuesta o condición externa.",
   completed: "El registro de lo que ya resolviste.",
+  calendar: "Todos tus hitos y vencimientos, ordenados en el tiempo.",
   subjects: "Recorre tus asuntos como carpetas y abre cada nivel para ver su trabajo.",
 };
 
@@ -78,6 +81,7 @@ function ViewIcon({ view }: { view: ViewKey }) {
     upcoming: <><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M8 3v4M16 3v4M3.5 10h17" /></>,
     waiting: <><circle cx="12" cy="12" r="9" /><path d="M9.5 8.5v7M14.5 8.5v7" /></>,
     completed: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16.5 8.5" /></>,
+    calendar: <><rect x="3.5" y="4.5" width="17" height="16" rx="2" /><path d="M8 2.5v4M16 2.5v4M3.5 9.5h17M8 13h2M14 13h2M8 17h2" /></>,
     subjects: <><path d="M4 6.5h7l2 2H20v10H4z" /><path d="M4 10h16" /></>,
   };
 
@@ -1341,6 +1345,7 @@ function SubjectEventFormModal({
   event,
   defaultKind,
   subjectName,
+  phases,
   onSave,
   onClose,
 }: {
@@ -1348,6 +1353,7 @@ function SubjectEventFormModal({
   event: SubjectEvent | null;
   defaultKind: SubjectEventKind;
   subjectName: string;
+  phases: SubjectPhase[];
   onSave: (draft: SubjectEventDraft) => void;
   onClose: () => void;
 }) {
@@ -1373,6 +1379,7 @@ function SubjectEventFormModal({
       kind: String(data.get("kind")) as SubjectEventKind,
       description: String(data.get("description") ?? ""),
       date: String(data.get("date") ?? ""),
+      phaseId: String(data.get("phaseId") ?? "") || null,
     };
 
     if (!isValidSubjectEventDraft(draft)) {
@@ -1469,6 +1476,24 @@ function SubjectEventFormModal({
             />
           </FieldLabel>
 
+          <FieldLabel label="Fase (opcional)">
+            <select
+              name="phaseId"
+              defaultValue={event?.phaseId ?? ""}
+              className={controlClass}
+            >
+              <option value="">Sin fase</option>
+              {phases.map((phase) => (
+                <option key={phase.id} value={phase.id}>{phase.name}</option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs font-medium leading-5 text-[#7185a3]">
+              {phases.length > 0
+                ? "La fecha aparecerá vinculada a esta etapa del asunto."
+                : "Este asunto todavía no tiene fases disponibles."}
+            </span>
+          </FieldLabel>
+
           {formError ? (
             <p role="alert" className="rounded-lg border border-[#6f3c35] bg-[#2e1716] px-3 py-2 text-sm font-bold text-[#ff9d88]">
               {formError}
@@ -1492,12 +1517,14 @@ function SubjectEventFormModal({
 function SubjectEventSection({
   subject,
   events,
+  phases,
   onAddEvent,
   onPatchEvent,
   onDeleteEvent,
 }: {
   subject: Subject;
   events: SubjectEvent[];
+  phases: SubjectPhase[];
   onAddEvent: (subjectId: string, draft: SubjectEventDraft) => void;
   onPatchEvent: (eventId: string, patch: Partial<SubjectEventDraft>) => void;
   onDeleteEvent: (eventId: string) => void;
@@ -1510,6 +1537,7 @@ function SubjectEventSection({
   const visibleEvents = subjectEvents.filter((event) => filter === "all" || event.kind === filter);
   const milestoneCount = subjectEvents.filter((event) => event.kind === "milestone").length;
   const deadlineCount = subjectEvents.length - milestoneCount;
+  const subjectPhases = sortedSubjectPhases(phases, subject.id);
 
   function openCreate(kind: SubjectEventKind) {
     setEditingEvent(null);
@@ -1570,6 +1598,9 @@ function SubjectEventSection({
         <ol className="relative max-h-[520px] overflow-y-auto p-4 before:absolute before:bottom-8 before:left-[43px] before:top-8 before:w-px before:bg-[#315177]">
           {visibleEvents.map((event) => {
             const isMilestone = event.kind === "milestone";
+            const phase = event.phaseId
+              ? subjectPhases.find((item) => item.id === event.phaseId) ?? null
+              : null;
             return (
               <li key={event.id} className="relative grid grid-cols-[56px_minmax(0,1fr)] gap-3 py-2">
                 <time dateTime={event.date} className={`relative z-[1] flex h-12 w-12 flex-col items-center justify-center rounded-xl border font-mono ${isMilestone ? "border-[#315f5a] bg-[#122b2a] text-[#63d3a5]" : "border-[#66532f] bg-[#282116] text-[#f2be67]"}`}>
@@ -1584,6 +1615,11 @@ function SubjectEventSection({
                           {isMilestone ? "Hito" : "Vencimiento"}
                         </span>
                         <time dateTime={event.date} className="font-mono text-xs font-bold text-[#91a0bb]">{formatDate(event.date)}</time>
+                        {phase ? (
+                          <span className="rounded-full border border-[#3a5170] bg-[#152238] px-2 py-0.5 text-[10px] font-black text-[#a9bdd8]">
+                            Fase · {phase.name}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#e5ebf5]">{event.description}</p>
                     </div>
@@ -1605,6 +1641,7 @@ function SubjectEventSection({
         event={editingEvent}
         defaultKind={defaultKind}
         subjectName={subject.name}
+        phases={subjectPhases}
         onSave={(draft) => {
           if (editingEvent) onPatchEvent(editingEvent.id, draft);
           else onAddEvent(subject.id, draft);
@@ -1612,6 +1649,294 @@ function SubjectEventSection({
         onClose={() => setIsFormOpen(false)}
       />
     </section>
+  );
+}
+
+const calendarWeekdays = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+function dateOnlyFromDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function monthLabel(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const label = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(
+    new Date(year, month - 1, 1),
+  );
+  return label.charAt(0).toLocaleUpperCase("es") + label.slice(1);
+}
+
+function longDateLabel(dateOnly: string) {
+  const [year, month, day] = dateOnly.split("-").map(Number);
+  const label = new Intl.DateTimeFormat("es-AR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(new Date(year, month - 1, day));
+  return label.charAt(0).toLocaleUpperCase("es") + label.slice(1);
+}
+
+function CalendarEventCard({
+  event,
+  subjects,
+  phases,
+  onOpenSubject,
+}: {
+  event: SubjectEvent;
+  subjects: Subject[];
+  phases: SubjectPhase[];
+  onOpenSubject: (subjectId: string) => void;
+}) {
+  const isMilestone = event.kind === "milestone";
+  const subjectPath = getSubjectPath(subjects, event.subjectId);
+  const phase = event.phaseId ? phases.find((item) => item.id === event.phaseId) ?? null : null;
+
+  return (
+    <article className="rounded-xl border border-[#2d405d] bg-[#0c1726] p-3 transition hover:border-[#466486]">
+      <div className="flex items-start gap-3">
+        <span
+          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm font-black ${
+            isMilestone
+              ? "border-[#315f5a] bg-[#122b2a] text-[#63d3a5]"
+              : "border-[#66532f] bg-[#282116] text-[#f2be67]"
+          }`}
+          aria-hidden="true"
+        >
+          {isMilestone ? "◇" : "!"}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`text-[10px] font-black uppercase tracking-[0.12em] ${
+                isMilestone ? "text-[#63d3a5]" : "text-[#f2be67]"
+              }`}
+            >
+              {isMilestone ? "Hito" : "Vencimiento"}
+            </span>
+            <time dateTime={event.date} className="font-mono text-[10px] font-bold text-[#8193af]">
+              {formatDate(event.date)}
+            </time>
+          </div>
+          <p className="mt-1 text-sm font-bold leading-5 text-[#e8eef8]">{event.description}</p>
+          {phase ? (
+            <p className="mt-1.5 truncate text-[11px] font-bold text-[#9bacca]">
+              Fase · {phase.name}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onOpenSubject(event.subjectId)}
+            className="mt-2 max-w-full truncate text-left text-xs font-bold text-[#82afff] transition hover:text-[#b8d1ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+          >
+            {subjectPath || "Abrir asunto"} →
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function CalendarView({
+  events,
+  subjects,
+  phases,
+  today,
+  searchQuery,
+  onOpenSubject,
+}: {
+  events: SubjectEvent[];
+  subjects: Subject[];
+  phases: SubjectPhase[];
+  today: string;
+  searchQuery: string;
+  onOpenSubject: (subjectId: string) => void;
+}) {
+  const [monthKey, setMonthKey] = useState(today.slice(0, 7));
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [filter, setFilter] = useState<"all" | SubjectEventKind>("all");
+  const query = searchQuery.trim().toLocaleLowerCase("es");
+  const matchingEvents = useMemo(
+    () =>
+      sortedSubjectEvents(events).filter((event) => {
+        if (filter !== "all" && event.kind !== filter) return false;
+        if (!query) return true;
+
+        return `${event.description} ${getSubjectPath(subjects, event.subjectId)}`
+          .toLocaleLowerCase("es")
+          .includes(query);
+      }),
+    [events, filter, query, subjects],
+  );
+  const eventsByDate = useMemo(() => {
+    const grouped = new Map<string, SubjectEvent[]>();
+
+    for (const event of matchingEvents) {
+      grouped.set(event.date, [...(grouped.get(event.date) ?? []), event]);
+    }
+
+    return grouped;
+  }, [matchingEvents]);
+  const calendarDays = useMemo(() => {
+    const [year, month] = monthKey.split("-").map(Number);
+    const firstDay = new Date(year, month - 1, 1);
+    const mondayOffset = (firstDay.getDay() + 6) % 7;
+    const gridStart = new Date(year, month - 1, 1 - mondayOffset);
+
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(gridStart);
+      date.setDate(gridStart.getDate() + index);
+      return dateOnlyFromDate(date);
+    });
+  }, [monthKey]);
+  const monthEvents = matchingEvents.filter((event) => event.date.startsWith(monthKey));
+  const selectedEvents = eventsByDate.get(selectedDate) ?? [];
+  const upcomingEvents = matchingEvents.filter((event) => compareDateOnly(event.date, today) >= 0).slice(0, 6);
+  const milestoneCount = events.filter((event) => event.kind === "milestone").length;
+  const deadlineCount = events.length - milestoneCount;
+
+  function moveMonth(offset: number) {
+    const [year, month] = monthKey.split("-").map(Number);
+    const next = new Date(year, month - 1 + offset, 1);
+    const nextDate = dateOnlyFromDate(next);
+    setMonthKey(nextDate.slice(0, 7));
+    setSelectedDate(nextDate);
+  }
+
+  function selectDate(date: string) {
+    setSelectedDate(date);
+    if (!date.startsWith(monthKey)) setMonthKey(date.slice(0, 7));
+  }
+
+  function goToToday() {
+    setMonthKey(today.slice(0, 7));
+    setSelectedDate(today);
+  }
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <section className="overflow-hidden rounded-2xl border border-[#2b4362] bg-[#0d1a2a] shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
+        <div className="flex flex-col gap-4 border-b border-[#293852] bg-[#101d30] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div>
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
+              {monthEvents.length} {monthEvents.length === 1 ? "fecha clave" : "fechas clave"}
+            </p>
+            <h3 className="mt-1 text-2xl font-black tracking-[-0.03em] text-[#f2f6fc]">
+              {monthLabel(monthKey)}
+            </h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => moveMonth(-1)} aria-label="Mes anterior" className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#344d6c] text-lg font-black text-[#afbed3] transition hover:bg-[#172a43] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">←</button>
+            <button type="button" onClick={goToToday} className="h-10 rounded-xl border border-[#46678f] bg-[#142943] px-3 text-sm font-black text-[#c9dcf8] transition hover:bg-[#1b3555] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">Hoy</button>
+            <button type="button" onClick={() => moveMonth(1)} aria-label="Mes siguiente" className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#344d6c] text-lg font-black text-[#afbed3] transition hover:bg-[#172a43] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">→</button>
+          </div>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto border-b border-[#263852] px-4 py-3 hide-scrollbar sm:px-5" aria-label="Filtrar calendario">
+          {([
+            ["all", "Todo", events.length],
+            ["milestone", "Hitos", milestoneCount],
+            ["deadline", "Vencimientos", deadlineCount],
+          ] as const).map(([value, label, count]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              aria-pressed={filter === value}
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-black transition ${
+                filter === value
+                  ? "border-[#82afff] bg-[#1a3354] text-[#d7e5fc]"
+                  : "border-[#344562] text-[#91a0bb] hover:bg-[#182238]"
+              }`}
+            >
+              {label} <span className="ml-1 font-mono opacity-70">{count}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 border-b border-[#2a3c57] bg-[#0a1523] px-2 sm:px-3">
+          {calendarWeekdays.map((weekday) => (
+            <div key={weekday} className="py-2 text-center font-mono text-[9px] font-black uppercase tracking-[0.12em] text-[#7185a3] sm:text-[10px]">
+              {weekday}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7 gap-px bg-[#263852]" aria-label={`Calendario de ${monthLabel(monthKey)}`}>
+          {calendarDays.map((date) => {
+            const dayEvents = eventsByDate.get(date) ?? [];
+            const isCurrentMonth = date.startsWith(monthKey);
+            const isToday = date === today;
+            const isSelected = date === selectedDate;
+
+            return (
+              <button
+                key={date}
+                type="button"
+                onClick={() => selectDate(date)}
+                aria-label={`${longDateLabel(date)}, ${dayEvents.length} ${dayEvents.length === 1 ? "fecha clave" : "fechas clave"}`}
+                aria-pressed={isSelected}
+                className={`group min-h-20 min-w-0 bg-[#0d1a2a] p-1.5 text-left transition focus:z-[1] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#82afff] sm:min-h-28 sm:p-2.5 ${
+                  isSelected ? "bg-[#17304f] shadow-[inset_0_0_0_1px_#5f91d4]" : "hover:bg-[#12263d]"
+                } ${isCurrentMonth ? "" : "opacity-35"}`}
+              >
+                <span className={`flex h-6 w-6 items-center justify-center rounded-lg font-mono text-[11px] font-black ${isToday ? "bg-[#82afff] text-[#07111f]" : isSelected ? "text-[#dce9fc]" : "text-[#93a4bd]"}`}>
+                  {Number(date.slice(8, 10))}
+                </span>
+                <span className="mt-1.5 flex flex-wrap gap-1 sm:hidden" aria-hidden="true">
+                  {dayEvents.slice(0, 4).map((event) => (
+                    <span key={event.id} className={`h-1.5 w-1.5 rounded-full ${event.kind === "milestone" ? "bg-[#63d3a5]" : "bg-[#f2be67]"}`} />
+                  ))}
+                </span>
+                <span className="mt-1.5 hidden space-y-1 sm:block">
+                  {dayEvents.slice(0, 2).map((event) => (
+                    <span key={event.id} className={`block truncate rounded-md border-l-2 px-1.5 py-1 text-[10px] font-bold ${event.kind === "milestone" ? "border-[#63d3a5] bg-[#12302d] text-[#9de7c8]" : "border-[#f2be67] bg-[#2c2417] text-[#f4cf8d]"}`}>
+                      {event.description}
+                    </span>
+                  ))}
+                  {dayEvents.length > 2 ? <span className="block pl-1 font-mono text-[9px] font-black text-[#8da0bb]">+{dayEvents.length - 2} más</span> : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <aside className="space-y-5">
+        <section className="overflow-hidden rounded-2xl border border-[#315177] bg-[#101c2d]">
+          <div className="border-b border-[#293852] px-4 py-4">
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">Agenda del día</p>
+            <h3 className="mt-1 text-lg font-black text-[#eef4ff]">{longDateLabel(selectedDate)}</h3>
+          </div>
+          <div className="space-y-2 p-3">
+            {selectedEvents.length > 0 ? (
+              selectedEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onOpenSubject={onOpenSubject} />)
+            ) : (
+              <div className="rounded-xl border border-dashed border-[#344d6c] px-4 py-8 text-center">
+                <p className="text-sm font-bold text-[#b8c5d8]">Día libre de fechas clave.</p>
+                <p className="mt-1 text-xs leading-5 text-[#7f91ad]">Selecciona otro día o abre un asunto para registrar una fecha.</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-[#2b4362] bg-[#0d1a2a]">
+          <div className="border-b border-[#293852] px-4 py-3">
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">En el horizonte</p>
+            <h3 className="mt-1 text-base font-black text-[#eaf1fb]">Próximas fechas</h3>
+          </div>
+          <div className="space-y-2 p-3">
+            {upcomingEvents.length > 0 ? (
+              upcomingEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onOpenSubject={onOpenSubject} />)
+            ) : (
+              <p className="px-2 py-6 text-center text-sm text-[#8191ac]">No hay próximas fechas con este filtro.</p>
+            )}
+          </div>
+        </section>
+      </aside>
+    </div>
   );
 }
 
@@ -2266,6 +2591,10 @@ export default function TaskManager() {
       return workspace.views.completed;
     }
 
+    if (activeView === "calendar") {
+      return [];
+    }
+
     if (selectedSubjectId) {
       return workspace.getTasksForSubject(selectedSubjectId);
     }
@@ -2288,11 +2617,17 @@ export default function TaskManager() {
     { key: "upcoming", count: workspace.views.upcoming.length },
     { key: "waiting", count: workspace.views.waiting.length },
     { key: "completed", count: workspace.views.completed.length },
+    { key: "calendar", count: workspace.subjectEvents.length },
     { key: "subjects", count: workspace.subjects.length },
   ];
 
-  const heading = activeView === "subjects" ? viewLabels.subjects : viewLabels[activeView];
+  const heading = viewLabels[activeView];
   const hasSearch = searchQuery.trim().length > 0;
+  const calendarSearchCount = workspace.subjectEvents.filter((event) =>
+    `${event.description} ${getSubjectPath(workspace.subjects, event.subjectId)}`
+      .toLocaleLowerCase("es")
+      .includes(searchQuery.trim().toLocaleLowerCase("es")),
+  ).length;
   const emptyLabel =
     activeView === "subjects" && !selectedSubject
       ? "Elegi un asunto para ver sus tareas."
@@ -2394,7 +2729,7 @@ export default function TaskManager() {
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="Buscar en tu espacio…"
-                  aria-label="Buscar tareas"
+                  aria-label="Buscar en tu espacio"
                   className="h-11 w-full rounded-xl border border-[#2b4261] bg-[#0d1a2a] pl-10 pr-14 text-sm font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#667b9a] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
                 />
                 <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#8295b0] sm:block">/</kbd>
@@ -2419,6 +2754,7 @@ export default function TaskManager() {
                       ? "Sincronizando"
                       : "Sincronizado"}
                 </span>
+                <LogoutButton />
               </div>
             </div>
             {workspace.syncError ? (
@@ -2433,7 +2769,13 @@ export default function TaskManager() {
               <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#20334d] pb-5">
                 <div>
                   <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
-                    {hasSearch ? `${filteredTasks.length} de ${visibleTasks.length} resultados` : `${visibleTasks.length} ${visibleTasks.length === 1 ? "tarea" : "tareas"}`}
+                    {activeView === "calendar"
+                      ? hasSearch
+                        ? `${calendarSearchCount} de ${workspace.subjectEvents.length} fechas clave`
+                        : `${workspace.subjectEvents.length} ${workspace.subjectEvents.length === 1 ? "fecha clave" : "fechas clave"}`
+                      : hasSearch
+                        ? `${filteredTasks.length} de ${visibleTasks.length} resultados`
+                        : `${visibleTasks.length} ${visibleTasks.length === 1 ? "tarea" : "tareas"}`}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-3">
                     <h2 className="text-3xl font-black tracking-[-0.04em] text-[#f4f7fc] md:text-5xl">
@@ -2473,7 +2815,7 @@ export default function TaskManager() {
                       Limpiar busqueda
                     </button>
                   ) : null}
-                  {activeView !== "subjects" ? (
+                  {activeView !== "subjects" && activeView !== "calendar" ? (
                     <button
                       type="button"
                       onClick={() => setIsTaskModalOpen(true)}
@@ -2551,6 +2893,7 @@ export default function TaskManager() {
                         <SubjectEventSection
                           subject={selectedSubject}
                           events={workspace.subjectEvents}
+                          phases={workspace.phases}
                           onAddEvent={workspace.addSubjectEvent}
                           onPatchEvent={workspace.updateSubjectEvent}
                           onDeleteEvent={workspace.deleteSubjectEvent}
@@ -2586,6 +2929,18 @@ export default function TaskManager() {
                     </div>
                   </div>
                 </div>
+              ) : activeView === "calendar" ? (
+                <CalendarView
+                  events={workspace.subjectEvents}
+                  subjects={workspace.subjects}
+                  phases={workspace.phases}
+                  today={workspace.today}
+                  searchQuery={searchQuery}
+                  onOpenSubject={(subjectId) => {
+                    setSelectedSubjectId(subjectId);
+                    setActiveView("subjects");
+                  }}
+                />
               ) : (
                 <div className="space-y-3">
                   {filteredTaskItems.length === 0 ? (

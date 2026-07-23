@@ -16,6 +16,21 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Authentication and PocketBase
+
+Epixodo requires an authenticated PocketBase user before showing or synchronizing
+the workspace. Create the user from the PocketBase administration UI and configure:
+
+```bash
+POCKETBASE_URL=https://your-pocketbase.example
+POCKETBASE_USERS_COLLECTION=users
+```
+
+`POCKETBASE_USERS_COLLECTION` is optional and defaults to `users`. Workspace
+operations continue to use the server-side PocketBase credentials and the existing
+`POCKETBASE_WORKSPACE_KEY`; authentication protects that single configured
+workspace and does not create a separate workspace per user.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

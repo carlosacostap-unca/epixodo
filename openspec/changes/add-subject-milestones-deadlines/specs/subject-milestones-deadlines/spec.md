@@ -33,6 +33,21 @@ The system MUST allow users to edit the type, description, and date of an existi
 - **WHEN** the user confirms deletion of a dated item
 - **THEN** the system removes it from the subject and persistent workspace
 
+### Requirement: Dated items can belong to a subject phase
+The system MUST allow a milestone or deadline to optionally reference a phase owned by the same subject.
+
+#### Scenario: Assign a phase
+- **WHEN** the user selects one of the subject's phases while creating or editing a dated item
+- **THEN** the system stores and displays that phase association
+
+#### Scenario: Reject a phase from another subject
+- **WHEN** an operation attempts to associate a dated item with a phase owned by another subject
+- **THEN** the system rejects the association and preserves valid workspace data
+
+#### Scenario: Delete an associated phase
+- **WHEN** a phase referenced by a milestone or deadline is deleted
+- **THEN** the dated item is preserved and becomes unassigned from any phase
+
 ### Requirement: Subject dates are displayed chronologically
 The system MUST display a subject's milestones and deadlines ordered by ascending calendar date with a stable tie-breaker.
 

@@ -14,14 +14,14 @@ El espacio de trabajo ya persiste asuntos jerárquicos, tareas y fases mediante 
 **Non-Goals:**
 
 - Notificaciones, recordatorios o recurrencia.
-- Vincular hitos o vencimientos con tareas o fases.
+- Vincular hitos o vencimientos con tareas.
 - Estados de completitud, adjuntos o responsables.
 
 ## Decisions
 
 ### Usar una colección unificada de eventos de asunto
 
-El espacio de trabajo incorporará `subjectEvents`, cuyos elementos contienen `id`, `subjectId`, `kind`, `description`, `date` y `createdAt`. `kind` será una unión cerrada entre `milestone` y `deadline`.
+El espacio de trabajo incorporará `subjectEvents`, cuyos elementos contienen `id`, `subjectId`, `phaseId`, `kind`, `description`, `date` y `createdAt`. `kind` será una unión cerrada entre `milestone` y `deadline`; `phaseId` será opcional y solo podrá apuntar a una fase del mismo asunto.
 
 Una colección unificada evita duplicar normalización, operaciones CRUD y componentes. Se descartaron dos colecciones separadas porque ambas entidades comparten exactamente el mismo ciclo de vida y atributos solicitados.
 
@@ -36,6 +36,8 @@ Los elementos se ordenarán por fecha ascendente y, cuando coincidan, por fecha 
 ### Integración en el detalle del asunto
 
 Una nueva sección convivirá con las fases y las tareas. Ofrecerá filtros visuales por tipo, una línea temporal compacta y un modal reutilizable para crear o editar elementos.
+
+La fase se elegirá entre las fases del asunto activo. Si una fase se elimina, el evento se conservará y su asociación volverá a `null`; durante la normalización también se limpiarán referencias inexistentes o pertenecientes a otro asunto.
 
 ### Eliminación en cascada y migración tolerante
 

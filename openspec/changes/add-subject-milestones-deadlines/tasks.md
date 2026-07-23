@@ -19,3 +19,10 @@
 
 - [x] 4.1 Run focused tests, TypeScript, lint, and production build
 - [x] 4.2 Verify milestone and deadline workflows in a real browser on desktop and mobile
+
+## 5. Optional phase association
+
+- [x] 5.1 Add an optional phase reference with same-subject validation and backward-compatible normalization
+- [x] 5.2 Allow phase assignment in the event form and display it in subject and calendar views
+- [x] 5.3 Preserve events by clearing their phase reference when a phase is deleted
+- [x] 5.4 Extend focused tests for assignment, invalid references, updates, and phase deletion

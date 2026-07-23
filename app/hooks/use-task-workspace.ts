@@ -435,6 +435,15 @@ export function useTaskWorkspace() {
         return current;
       }
 
+      if (
+        draft.phaseId &&
+        !current.phases.some(
+          (phase) => phase.id === draft.phaseId && phase.subjectId === subjectId,
+        )
+      ) {
+        return current;
+      }
+
       return {
         ...current,
         subjectEvents: [...current.subjectEvents, createSubjectEvent(subjectId, draft)],
@@ -447,6 +456,17 @@ export function useTaskWorkspace() {
       const event = current.subjectEvents.find((item) => item.id === eventId);
 
       if (!event) {
+        return current;
+      }
+
+      const nextPhaseId = patch.phaseId === undefined ? event.phaseId : patch.phaseId;
+
+      if (
+        nextPhaseId &&
+        !current.phases.some(
+          (phase) => phase.id === nextPhaseId && phase.subjectId === event.subjectId,
+        )
+      ) {
         return current;
       }
 
