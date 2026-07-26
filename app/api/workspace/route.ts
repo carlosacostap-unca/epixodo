@@ -11,11 +11,12 @@ function errorResponse(error: unknown) {
 
 export async function GET() {
   try {
-    if (!(await getAuthenticatedUser())) {
+    const user = await getAuthenticatedUser();
+    if (!user) {
       return Response.json({ error: "Necesitás iniciar sesión." }, { status: 401 });
     }
 
-    const workspace = await getPocketBaseWorkspace();
+    const workspace = await getPocketBaseWorkspace(user.id);
     return Response.json(workspace);
   } catch (error) {
     return errorResponse(error);
@@ -24,12 +25,13 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    if (!(await getAuthenticatedUser())) {
+    const user = await getAuthenticatedUser();
+    if (!user) {
       return Response.json({ error: "Necesitás iniciar sesión." }, { status: 401 });
     }
 
     const workspace = normalizeWorkspaceData(await request.json());
-    const saved = await savePocketBaseWorkspace(workspace);
+    const saved = await savePocketBaseWorkspace(user.id, workspace);
     return Response.json(saved);
   } catch (error) {
     return errorResponse(error);

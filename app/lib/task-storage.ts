@@ -5,7 +5,23 @@ const STORAGE_KEY = "epixodo.personal-task-manager.v1";
 
 export function loadWorkspace(): WorkspaceData {
   if (typeof window === "undefined") {
-    return { tasks: [], subjects: [], phases: [], subjectEvents: [] };
+    return {
+      tasks: [],
+      subjects: [],
+      phases: [],
+      subjectEvents: [],
+      financeAccounts: [],
+      financeEntries: [],
+      financeDuePayments: [],
+      nutritionProfile: null,
+      nutritionFoods: [],
+      nutritionRecipes: [],
+      nutritionPlanItems: [],
+      nutritionIntakeEntries: [],
+      nutritionHydrationEntries: [],
+      nutritionShoppingLists: [],
+      locationEntries: [],
+    };
   }
 
   return parseWorkspaceJson(window.localStorage.getItem(STORAGE_KEY));
@@ -23,6 +39,17 @@ export function saveWorkspace(workspace: WorkspaceData) {
       subjects: workspace.subjects,
       phases: workspace.phases,
       subjectEvents: workspace.subjectEvents,
+      financeAccounts: workspace.financeAccounts,
+      financeEntries: workspace.financeEntries,
+      financeDuePayments: workspace.financeDuePayments,
+      nutritionProfile: workspace.nutritionProfile,
+      nutritionFoods: workspace.nutritionFoods,
+      nutritionRecipes: workspace.nutritionRecipes,
+      nutritionPlanItems: workspace.nutritionPlanItems,
+      nutritionIntakeEntries: workspace.nutritionIntakeEntries,
+      nutritionHydrationEntries: workspace.nutritionHydrationEntries,
+      nutritionShoppingLists: workspace.nutritionShoppingLists,
+      locationEntries: workspace.locationEntries,
     }),
   );
 }

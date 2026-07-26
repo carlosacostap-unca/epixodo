@@ -1,3 +1,15 @@
+import type { FinanceAccount, FinanceDuePayment, FinanceEntry } from "./finance";
+import type { LocationEntry } from "./locations";
+import type {
+  NutritionFood,
+  NutritionHydrationEntry,
+  NutritionIntakeEntry,
+  NutritionPlanItem,
+  NutritionProfile,
+  NutritionRecipe,
+  NutritionShoppingList,
+} from "./nutrition";
+
 export type DateOnly = string;
 
 export type TaskStatus = "pending" | "in_progress" | "waiting" | "completed";
@@ -83,6 +95,17 @@ export type WorkspaceData = {
   subjects: Subject[];
   phases: SubjectPhase[];
   subjectEvents: SubjectEvent[];
+  financeAccounts: FinanceAccount[];
+  financeEntries: FinanceEntry[];
+  financeDuePayments: FinanceDuePayment[];
+  nutritionProfile: NutritionProfile | null;
+  nutritionFoods: NutritionFood[];
+  nutritionRecipes: NutritionRecipe[];
+  nutritionPlanItems: NutritionPlanItem[];
+  nutritionIntakeEntries: NutritionIntakeEntry[];
+  nutritionHydrationEntries: NutritionHydrationEntry[];
+  nutritionShoppingLists: NutritionShoppingList[];
+  locationEntries: LocationEntry[];
 };
 
 export type TaskTreeItem = {
@@ -116,6 +139,17 @@ export function emptyWorkspace(): WorkspaceData {
     subjects: [],
     phases: [],
     subjectEvents: [],
+    financeAccounts: [],
+    financeEntries: [],
+    financeDuePayments: [],
+    nutritionProfile: null,
+    nutritionFoods: [],
+    nutritionRecipes: [],
+    nutritionPlanItems: [],
+    nutritionIntakeEntries: [],
+    nutritionHydrationEntries: [],
+    nutritionShoppingLists: [],
+    locationEntries: [],
   };
 }
 

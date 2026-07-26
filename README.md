@@ -26,10 +26,41 @@ POCKETBASE_URL=https://your-pocketbase.example
 POCKETBASE_USERS_COLLECTION=users
 ```
 
-`POCKETBASE_USERS_COLLECTION` is optional and defaults to `users`. Workspace
-operations continue to use the server-side PocketBase credentials and the existing
-`POCKETBASE_WORKSPACE_KEY`; authentication protects that single configured
-workspace and does not create a separate workspace per user.
+`POCKETBASE_USERS_COLLECTION` is optional and defaults to `users`. Domain data is
+stored in normalized PocketBase collections and every server query is scoped to
+the authenticated user ID. Validate the remote schema with:
+
+```bash
+npm run schema:normalized:validate
+```
+
+Normalized reads and writes are enabled by default after the verified migration.
+The legacy `workspaces/default` document remains available for rollback. To return
+temporarily to it for the migrated owner, configure:
+
+```bash
+POCKETBASE_NORMALIZED_READS=false
+POCKETBASE_NORMALIZED_WRITES=false
+POCKETBASE_LEGACY_FALLBACK=true
+```
+
+Set `POCKETBASE_LEGACY_FALLBACK=false` after the stabilization period. Do not
+delete the legacy record until a separate archival change has been approved.
+
+## Ingreso con IA
+
+El módulo Ingreso acepta texto o una nota de voz, la procesa del lado servidor y
+crea una tarea pendiente, sin asunto ni fechas, dentro de Bandeja. Configurá la
+clave únicamente en `.env.local` o en las variables del entorno de despliegue:
+
+```bash
+OPENAI_API_KEY=sk-...
+OPENAI_CAPTURE_MODEL=gpt-5.6-luna
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+```
+
+Los dos nombres de modelo son opcionales: esos son sus valores predeterminados.
+No uses el prefijo `NEXT_PUBLIC_` para la clave, porque la expondría al navegador.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

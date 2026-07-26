@@ -2,6 +2,10 @@
 
 import { type DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTaskWorkspace } from "../hooks/use-task-workspace";
+import FinanceView from "./finance-view";
+import NutritionView from "./nutrition-view";
+import LocationsView from "./locations-view";
+import CaptureView from "./capture-view";
 import LogoutButton from "./logout-button";
 import {
   compareDateOnly,
@@ -31,7 +35,18 @@ import {
   type TaskStatus,
 } from "../lib/tasks";
 
-type ViewKey = "today" | "inbox" | "upcoming" | "waiting" | "completed" | "calendar" | "subjects";
+type ViewKey =
+  | "capture"
+  | "today"
+  | "inbox"
+  | "upcoming"
+  | "waiting"
+  | "completed"
+  | "calendar"
+  | "subjects"
+  | "finances"
+  | "nutrition"
+  | "locations";
 type SubjectViewMode = "folders" | "horizon";
 type EditableTaskPatch = Partial<
   Pick<
@@ -55,6 +70,7 @@ type SubjectTreeItem = {
 };
 
 const viewLabels: Record<ViewKey, string> = {
+  capture: "Ingreso",
   today: "Hoy",
   inbox: "Bandeja",
   upcoming: "Proximas",
@@ -62,9 +78,13 @@ const viewLabels: Record<ViewKey, string> = {
   completed: "Completadas",
   calendar: "Calendario",
   subjects: "Asuntos",
+  finances: "Finanzas",
+  nutrition: "Nutrición",
+  locations: "Ubicaciones",
 };
 
 const viewDescriptions: Record<ViewKey, string> = {
+  capture: "Captura por texto o voz; la IA lo deja listo para que lo proceses en Bandeja.",
   today: "Lo que requiere atención en esta fecha.",
   inbox: "Ideas y tareas que todavía no organizaste.",
   upcoming: "El trabajo que se acerca en los próximos días.",
@@ -72,10 +92,14 @@ const viewDescriptions: Record<ViewKey, string> = {
   completed: "El registro de lo que ya resolviste.",
   calendar: "Todos tus hitos y vencimientos, ordenados en el tiempo.",
   subjects: "Recorre tus asuntos como carpetas y abre cada nivel para ver su trabajo.",
+  finances: "Ingresos, egresos, vencimientos y saldos de tus cuentas, sin mezclar monedas.",
+  nutrition: "Planificá, registrá y prepará tus comidas desde un mismo cuaderno diario.",
+  locations: "Planificá dónde debés estar y registrá tu recorrido real, día a día y por horario.",
 };
 
 function ViewIcon({ view }: { view: ViewKey }) {
   const paths: Record<ViewKey, React.ReactNode> = {
+    capture: <><path d="M12 3v11" /><path d="M8 7a4 4 0 0 1 8 0v4a4 4 0 0 1-8 0V7Z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></>,
     today: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" /></>,
     inbox: <><path d="M4 5.5h16v13H4z" /><path d="M4 14h4l1.5 2h5l1.5-2h4" /></>,
     upcoming: <><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M8 3v4M16 3v4M3.5 10h17" /></>,
@@ -83,6 +107,9 @@ function ViewIcon({ view }: { view: ViewKey }) {
     completed: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16.5 8.5" /></>,
     calendar: <><rect x="3.5" y="4.5" width="17" height="16" rx="2" /><path d="M8 2.5v4M16 2.5v4M3.5 9.5h17M8 13h2M14 13h2M8 17h2" /></>,
     subjects: <><path d="M4 6.5h7l2 2H20v10H4z" /><path d="M4 10h16" /></>,
+    finances: <><rect x="3.5" y="5" width="17" height="14" rx="2" /><path d="M7 9.5h10M7 14.5h4M15.5 13v3M14 14.5h3" /></>,
+    nutrition: <><path d="M7 3v8M10 3v8M7 7h3M8.5 11v10M16 3c2 3 2 7 0 10M16 3v18" /></>,
+    locations: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></>,
   };
 
   return (
@@ -2560,7 +2587,14 @@ export default function TaskManager() {
         searchRef.current?.focus();
       }
 
-      if (event.key.toLowerCase() === "n" && activeView !== "subjects") {
+      if (
+        event.key.toLowerCase() === "n" &&
+        activeView !== "capture" &&
+        activeView !== "subjects" &&
+        activeView !== "finances" &&
+        activeView !== "nutrition" &&
+        activeView !== "locations"
+      ) {
         event.preventDefault();
         setIsTaskModalOpen(true);
       }
@@ -2571,6 +2605,10 @@ export default function TaskManager() {
   }, [activeView]);
 
   const visibleTasks = useMemo(() => {
+    if (activeView === "capture") {
+      return [];
+    }
+
     if (activeView === "today") {
       return workspace.views.today;
     }
@@ -2595,6 +2633,18 @@ export default function TaskManager() {
       return [];
     }
 
+    if (activeView === "finances") {
+      return [];
+    }
+
+    if (activeView === "nutrition") {
+      return [];
+    }
+
+    if (activeView === "locations") {
+      return [];
+    }
+
     if (selectedSubjectId) {
       return workspace.getTasksForSubject(selectedSubjectId);
     }
@@ -2612,6 +2662,7 @@ export default function TaskManager() {
   const filteredTaskItems = useMemo(() => taskTreeItems(filteredTasks), [filteredTasks]);
 
   const navItems: { key: ViewKey; count: number }[] = [
+    { key: "capture", count: workspace.views.inbox.length },
     { key: "today", count: workspace.views.today.length },
     { key: "inbox", count: workspace.views.inbox.length },
     { key: "upcoming", count: workspace.views.upcoming.length },
@@ -2619,6 +2670,9 @@ export default function TaskManager() {
     { key: "completed", count: workspace.views.completed.length },
     { key: "calendar", count: workspace.subjectEvents.length },
     { key: "subjects", count: workspace.subjects.length },
+    { key: "finances", count: workspace.financeEntries.length + workspace.financeDuePaymentCounts.pending },
+    { key: "nutrition", count: workspace.nutritionPlanItems.filter((item) => item.date === workspace.today).length },
+    { key: "locations", count: workspace.locationEntries.filter((item) => item.date === workspace.today).length },
   ];
 
   const heading = viewLabels[activeView];
@@ -2728,8 +2782,8 @@ export default function TaskManager() {
                   ref={searchRef}
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Buscar en tu espacio…"
-                  aria-label="Buscar en tu espacio"
+                  placeholder={activeView === "finances" ? "Buscar movimientos y pagos…" : activeView === "nutrition" ? "Buscar alimentos y preparaciones…" : activeView === "locations" ? "Buscar lugares y notas…" : "Buscar en tu espacio…"}
+                  aria-label={activeView === "finances" ? "Buscar movimientos y pagos" : activeView === "nutrition" ? "Buscar alimentos y preparaciones" : activeView === "locations" ? "Buscar lugares y notas" : "Buscar en tu espacio"}
                   className="h-11 w-full rounded-xl border border-[#2b4261] bg-[#0d1a2a] pl-10 pr-14 text-sm font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#667b9a] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
                 />
                 <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#8295b0] sm:block">/</kbd>
@@ -2769,7 +2823,15 @@ export default function TaskManager() {
               <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#20334d] pb-5">
                 <div>
                   <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
-                    {activeView === "calendar"
+                    {activeView === "capture"
+                      ? "Texto o voz / procesado con IA"
+                      : activeView === "nutrition"
+                      ? `${workspace.nutritionPlanItems.filter((item) => item.date === workspace.today).length} comidas planificadas hoy`
+                      : activeView === "locations"
+                      ? `${workspace.locationEntries.filter((item) => item.date === workspace.today).length} franjas planificadas hoy`
+                      : activeView === "finances"
+                      ? `${workspace.financeEntries.length} ${workspace.financeEntries.length === 1 ? "movimiento" : "movimientos"} · ${workspace.financeDuePaymentCounts.pending} ${workspace.financeDuePaymentCounts.pending === 1 ? "pago pendiente" : "pagos pendientes"}`
+                      : activeView === "calendar"
                       ? hasSearch
                         ? `${calendarSearchCount} de ${workspace.subjectEvents.length} fechas clave`
                         : `${workspace.subjectEvents.length} ${workspace.subjectEvents.length === 1 ? "fecha clave" : "fechas clave"}`
@@ -2815,7 +2877,7 @@ export default function TaskManager() {
                       Limpiar busqueda
                     </button>
                   ) : null}
-                  {activeView !== "subjects" && activeView !== "calendar" ? (
+                  {activeView !== "capture" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "finances" && activeView !== "nutrition" && activeView !== "locations" ? (
                     <button
                       type="button"
                       onClick={() => setIsTaskModalOpen(true)}
@@ -2827,7 +2889,18 @@ export default function TaskManager() {
                 </div>
               </div>
 
-              {activeView === "subjects" ? (
+              {activeView === "capture" ? (
+                <CaptureView
+                  onAddTask={workspace.addTask}
+                  onOpenInbox={() => setActiveView("inbox")}
+                />
+              ) : activeView === "locations" ? (
+                <LocationsView workspace={workspace} searchQuery={searchQuery} />
+              ) : activeView === "nutrition" ? (
+                <NutritionView workspace={workspace} searchQuery={searchQuery} />
+              ) : activeView === "finances" ? (
+                <FinanceView workspace={workspace} searchQuery={searchQuery} />
+              ) : activeView === "subjects" ? (
                 <div className="space-y-6">
                   <div className="rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.14)] sm:p-5">
                     <div className="mb-4">

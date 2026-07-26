@@ -1,4 +1,9 @@
 import { emptyWorkspace, type WorkspaceData } from "./tasks";
+import {
+  getNormalizedWorkspace,
+  hasVerifiedMigration,
+  saveNormalizedWorkspace,
+} from "./pocketbase-normalized";
 import { normalizeWorkspaceData } from "./workspace-codec";
 
 type PocketBaseAuth = {
@@ -42,7 +47,7 @@ function getTokenExpiry(token: string) {
   }
 }
 
-async function pocketBaseRequest<T>(
+export async function pocketBaseRequest<T>(
   apiPath: string,
   options: { method?: string; body?: unknown; auth?: boolean } = {},
 ): Promise<T> {
@@ -144,7 +149,7 @@ async function getWorkspaceRecord(): Promise<PocketBaseRecord | null> {
   return result.items?.[0] ?? null;
 }
 
-export async function getPocketBaseWorkspace(): Promise<WorkspaceData> {
+async function getLegacyWorkspace(): Promise<WorkspaceData> {
   const record = await getWorkspaceRecord();
 
   if (!record) {
@@ -154,7 +159,7 @@ export async function getPocketBaseWorkspace(): Promise<WorkspaceData> {
   return normalizeWorkspaceData(record.data);
 }
 
-export async function savePocketBaseWorkspace(workspace: WorkspaceData): Promise<WorkspaceData> {
+async function saveLegacyWorkspace(workspace: WorkspaceData): Promise<WorkspaceData> {
   const collection = workspaceCollection();
   const key = workspaceKey();
   const data = normalizeWorkspaceData(workspace);
@@ -180,4 +185,54 @@ export async function savePocketBaseWorkspace(workspace: WorkspaceData): Promise
   );
 
   return normalizeWorkspaceData(record.data);
+}
+
+function normalizedReadsEnabled() {
+  return process.env.POCKETBASE_NORMALIZED_READS !== "false";
+}
+
+function normalizedWritesEnabled() {
+  return process.env.POCKETBASE_NORMALIZED_WRITES !== "false";
+}
+
+function legacyFallbackEnabled() {
+  return process.env.POCKETBASE_LEGACY_FALLBACK !== "false";
+}
+
+export async function getPocketBaseWorkspace(ownerId: string): Promise<WorkspaceData> {
+  if (!ownerId) {
+    throw new Error("An authenticated owner id is required.");
+  }
+
+  if (normalizedReadsEnabled()) {
+    return normalizeWorkspaceData(await getNormalizedWorkspace(pocketBaseRequest, ownerId));
+  }
+
+  if (legacyFallbackEnabled() && await hasVerifiedMigration(pocketBaseRequest, ownerId)) {
+    return getLegacyWorkspace();
+  }
+
+  return emptyWorkspace();
+}
+
+export async function savePocketBaseWorkspace(
+  ownerId: string,
+  workspace: WorkspaceData,
+): Promise<WorkspaceData> {
+  if (!ownerId) {
+    throw new Error("An authenticated owner id is required.");
+  }
+
+  const normalized = normalizeWorkspaceData(workspace);
+  if (normalizedWritesEnabled()) {
+    return normalizeWorkspaceData(
+      await saveNormalizedWorkspace(pocketBaseRequest, ownerId, normalized),
+    );
+  }
+
+  if (legacyFallbackEnabled() && await hasVerifiedMigration(pocketBaseRequest, ownerId)) {
+    return saveLegacyWorkspace(normalized);
+  }
+
+  throw new Error("PocketBase normalized writes are disabled for this user.");
 }
