@@ -2,7 +2,9 @@ import {
   emptyWorkspace,
   isSubjectEventKind,
   isValidDateOnly,
+  normalizeTaskAiSuggestion,
   type Subject,
+  type Expectation,
   type SubjectEvent,
   type SubjectPhase,
   type SubjectHorizon,
@@ -45,11 +47,12 @@ type LegacyProject = {
   updatedAt: string;
 };
 
-type LegacyTask = Omit<Task, "subjectIds" | "parentTaskId" | "phaseId"> & {
+type LegacyTask = Omit<Task, "subjectIds" | "parentTaskId" | "phaseId" | "aiSuggestion"> & {
   projectId?: string | null;
   subjectIds?: string[];
   parentTaskId?: string | null;
   phaseId?: string | null;
+  aiSuggestion?: unknown;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -152,6 +155,7 @@ function toTask(value: unknown): Task | null {
           : null
         : null,
     priority: legacy.priority as Task["priority"],
+    aiSuggestion: normalizeTaskAiSuggestion(legacy.aiSuggestion),
     createdAt: legacy.createdAt,
     updatedAt: legacy.updatedAt,
     completedAt:
@@ -165,6 +169,21 @@ function toTask(value: unknown): Task | null {
 
 function toDateOnly(value: unknown): string | null {
   return isValidDateOnly(value) ? value : null;
+}
+
+function toExpectation(value: unknown): Expectation | null {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.title !== "string" ||
+      !value.title.trim() || !isValidDateOnly(value.expectedDate) ||
+      !(value.quantity === null || (Number.isSafeInteger(value.quantity) && (value.quantity as number) > 0)) ||
+      !["pending", "occurred", "not_occurred"].includes(String(value.status)) ||
+      typeof value.createdAt !== "string" || typeof value.updatedAt !== "string") return null;
+  return { id: value.id, title: repairMojibake(value.title.trim()),
+    notes: typeof value.notes === "string" ? repairMojibake(value.notes.trim()) : "",
+    expectedDate: value.expectedDate, quantity: value.quantity as number | null,
+    source: typeof value.source === "string" ? repairMojibake(value.source.trim()) : "",
+    status: value.status as Expectation["status"],
+    resolvedAt: typeof value.resolvedAt === "string" ? value.resolvedAt : null,
+    createdAt: value.createdAt, updatedAt: value.updatedAt };
 }
 
 function toSubjectEvent(value: unknown): SubjectEvent | null {
@@ -332,6 +351,9 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
         phaseId: phase && task.subjectIds.includes(phase.subjectId) ? phase.id : null,
       };
     });
+  const expectations = (Array.isArray(value.expectations) ? value.expectations : [])
+    .map(toExpectation)
+    .filter((item): item is Expectation => Boolean(item));
 
   const financeAccounts = (Array.isArray(value.financeAccounts) ? value.financeAccounts : [])
     .map(toFinanceAccount)
@@ -381,6 +403,7 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
 
   return {
     tasks,
+    expectations,
     subjects,
     phases,
     subjectEvents,
@@ -413,6 +436,7 @@ export function parseWorkspaceJson(raw: string | null): WorkspaceData {
 export function hasWorkspaceContent(workspace: WorkspaceData): boolean {
   return (
     workspace.tasks.length > 0 ||
+    workspace.expectations.length > 0 ||
     workspace.subjects.length > 0 ||
     workspace.phases.length > 0 ||
     workspace.subjectEvents.length > 0 ||
@@ -425,7 +449,8 @@ export function hasWorkspaceContent(workspace: WorkspaceData): boolean {
     workspace.nutritionPlanItems.length > 0 ||
     workspace.nutritionIntakeEntries.length > 0 ||
     workspace.nutritionHydrationEntries.length > 0 ||
-    workspace.nutritionShoppingLists.length > 0
+    workspace.nutritionShoppingLists.length > 0 ||
+    workspace.locationEntries.length > 0
   );
 }
 

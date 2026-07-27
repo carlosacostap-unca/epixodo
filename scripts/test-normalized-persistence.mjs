@@ -50,7 +50,33 @@ const workspace = {
   subjects: [{ id: "subject-1", name: "Trabajo", parentSubjectId: null, horizon: "short", createdAt: timestamp, updatedAt: timestamp }],
   phases: [{ id: "phase-1", subjectId: "subject-1", name: "Inicio", plannedStart: "2026-07-26", executedStart: null, plannedEnd: null, executedEnd: null, order: 0, createdAt: timestamp, updatedAt: timestamp }],
   subjectEvents: [{ id: "event-1", subjectId: "subject-1", phaseId: "phase-1", kind: "deadline", description: "Entrega", date: "2026-07-31", createdAt: timestamp, updatedAt: timestamp }],
-  tasks: [{ id: "task-1", title: "Preparar", notes: "", status: "pending", subjectIds: ["subject-1"], phaseId: "phase-1", parentTaskId: null, hacerEl: "2026-07-26", venceEl: "2026-07-31", priority: "high", completedAt: null, createdAt: timestamp, updatedAt: timestamp }],
+  tasks: [{
+    id: "task-1",
+    title: "Registrar gasto de Uber al Nodo",
+    notes: "Capturado por voz.",
+    status: "pending",
+    subjectIds: ["subject-1"],
+    phaseId: "phase-1",
+    parentTaskId: null,
+    hacerEl: "2026-07-26",
+    venceEl: "2026-07-31",
+    priority: "high",
+    aiSuggestion: {
+      type: "finance_entry",
+      kind: "expense",
+      description: "Viaje en Uber desde casa hasta el Nodo",
+      amountMinor: 310000,
+      currency: "ARS",
+      category: "Transporte",
+      date: "2026-07-26",
+      origin: "Casa",
+      destination: "El Nodo",
+    },
+    completedAt: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }],
+  expectations: [{ id: "expectation-1", title: "Llegan dos compras de Mercado Libre", notes: "Revisar la entrega.", expectedDate: "2026-07-28", quantity: 2, source: "Mercado Libre", status: "pending", resolvedAt: null, createdAt: timestamp, updatedAt: timestamp }],
   financeAccounts: [{ id: "account-1", name: "Banco", type: "bank", currency: "ARS", openingBalanceMinor: 10000, createdAt: timestamp, updatedAt: timestamp }],
   financeEntries: [{ id: "entry-1", accountId: "account-1", kind: "expense", date: "2026-07-26", description: "Compra", amountMinor: 1500, category: "Casa", createdAt: timestamp, updatedAt: timestamp }],
   financeDuePayments: [{ id: "due-1", accountId: "account-1", description: "Internet", amountMinor: 2000, dueDate: "2026-07-30", category: "Servicios", status: "pending", paidAt: null, createdAt: timestamp, updatedAt: timestamp }],
@@ -67,6 +93,10 @@ const workspace = {
 await saveNormalizedWorkspace(request, owner, workspace);
 const loaded = await getNormalizedWorkspace(request, owner);
 assert.deepEqual(loaded, workspace);
+assert.equal(loaded.tasks[0].notes, "Capturado por voz.", "suggestion metadata must stay hidden from task notes");
+assert.equal(loaded.tasks[0].aiSuggestion.amountMinor, 310000, "AI expense suggestion must survive persistence");
+assert.equal(loaded.expectations[0].status, "pending", "expectations must survive without becoming tasks");
+assert.equal(loaded.tasks.some((item) => item.id === "expectation-1"), false, "expectations must not leak into task views");
 assert.equal(loaded.phases[0].order, 0, "zero-based phase order must survive");
 assert.equal(loaded.nutritionProfile.energyGoalKcalMilli, null, "nullable goals must survive");
 

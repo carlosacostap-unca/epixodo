@@ -6,7 +6,12 @@ import FinanceView from "./finance-view";
 import NutritionView from "./nutrition-view";
 import LocationsView from "./locations-view";
 import CaptureView from "./capture-view";
+import ExpectationsView from "./expectations-view";
+import CompanionView from "./companion-view";
+import TodayOverview, { getTodayOverviewCount } from "./today-overview";
+import InboxAiSuggestion, { type InboxSuggestionAction } from "./inbox-ai-suggestion";
 import LogoutButton from "./logout-button";
+import type { FinanceAccount } from "../lib/finance";
 import {
   compareDateOnly,
   getPhaseDateRangeError,
@@ -37,6 +42,7 @@ import {
 
 type ViewKey =
   | "capture"
+  | "companion"
   | "today"
   | "inbox"
   | "upcoming"
@@ -46,7 +52,8 @@ type ViewKey =
   | "subjects"
   | "finances"
   | "nutrition"
-  | "locations";
+  | "locations"
+  | "expectations";
 type SubjectViewMode = "folders" | "horizon";
 type EditableTaskPatch = Partial<
   Pick<
@@ -60,6 +67,7 @@ type EditableTaskPatch = Partial<
     | "venceEl"
     | "priority"
     | "status"
+    | "aiSuggestion"
   >
 >;
 
@@ -71,6 +79,7 @@ type SubjectTreeItem = {
 
 const viewLabels: Record<ViewKey, string> = {
   capture: "Ingreso",
+  companion: "Compañía",
   today: "Hoy",
   inbox: "Bandeja",
   upcoming: "Proximas",
@@ -81,12 +90,14 @@ const viewLabels: Record<ViewKey, string> = {
   finances: "Finanzas",
   nutrition: "Nutrición",
   locations: "Ubicaciones",
+  expectations: "Esperas",
 };
 
 const viewDescriptions: Record<ViewKey, string> = {
   capture: "Captura por texto o voz; la IA lo deja listo para que lo proceses en Bandeja.",
+  companion: "Un lugar para pensar en voz alta, contar cómo viene el día y retomar cada conversación cuando quieras.",
   today: "Lo que requiere atención en esta fecha.",
-  inbox: "Ideas y tareas que todavía no organizaste.",
+  inbox: "Capturas de cualquier tipo, con campos sugeridos para que decidas dónde registrarlas.",
   upcoming: "El trabajo que se acerca en los próximos días.",
   waiting: "Tareas detenidas por una respuesta o condición externa.",
   completed: "El registro de lo que ya resolviste.",
@@ -95,11 +106,13 @@ const viewDescriptions: Record<ViewKey, string> = {
   finances: "Ingresos, egresos, vencimientos y saldos de tus cuentas, sin mezclar monedas.",
   nutrition: "Planificá, registrá y prepará tus comidas desde un mismo cuaderno diario.",
   locations: "Planificá dónde debés estar y registrá tu recorrido real, día a día y por horario.",
+  expectations: "Entregas, respuestas y novedades que dependen de otros y querés confirmar cuando llegue el día.",
 };
 
 function ViewIcon({ view }: { view: ViewKey }) {
   const paths: Record<ViewKey, React.ReactNode> = {
     capture: <><path d="M12 3v11" /><path d="M8 7a4 4 0 0 1 8 0v4a4 4 0 0 1-8 0V7Z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></>,
+    companion: <><path d="M5 5.5h14v10H9l-4 3v-13Z" /><path d="M9 9h6M9 12h4" /></>,
     today: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" /></>,
     inbox: <><path d="M4 5.5h16v13H4z" /><path d="M4 14h4l1.5 2h5l1.5-2h4" /></>,
     upcoming: <><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M8 3v4M16 3v4M3.5 10h17" /></>,
@@ -110,6 +123,7 @@ function ViewIcon({ view }: { view: ViewKey }) {
     finances: <><rect x="3.5" y="5" width="17" height="14" rx="2" /><path d="M7 9.5h10M7 14.5h4M15.5 13v3M14 14.5h3" /></>,
     nutrition: <><path d="M7 3v8M10 3v8M7 7h3M8.5 11v10M16 3c2 3 2 7 0 10M16 3v18" /></>,
     locations: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></>,
+    expectations: <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2M4 4l2 2M20 4l-2 2" /></>,
   };
 
   return (
@@ -357,6 +371,9 @@ function TaskRow({
   today,
   onStatus,
   onOpen,
+  accounts,
+  onApplySuggestion,
+  onOpenModule,
 }: {
   task: Task;
   subjects: Subject[];
@@ -365,6 +382,9 @@ function TaskRow({
   today: string;
   onStatus: (taskId: string, status: TaskStatus) => void;
   onOpen: (taskId: string) => void;
+  accounts: FinanceAccount[];
+  onApplySuggestion: (taskId: string, action: InboxSuggestionAction) => void;
+  onOpenModule: (module: "finances" | "subjects") => void;
 }) {
   const isCompleted = task.status === "completed";
   const isDueToday = task.venceEl === today;
@@ -383,19 +403,13 @@ function TaskRow({
           isCompleted ? "bg-[#45546d]" : depth > 0 ? "bg-[#f6c177]" : "bg-[#8ab4f8]"
         }`}
       />
-      <label className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#38506f] bg-[#0b1726] sm:mt-0.5">
-        <input
-          type="checkbox"
-          checked={isCompleted}
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-          onChange={(event) =>
-            onStatus(task.id, event.target.checked ? "completed" : "pending")
-          }
-          aria-label={`Completar ${task.title}`}
-          className="h-4 w-4 accent-[#8ab4f8]"
-        />
-      </label>
+      {task.aiSuggestion ? (
+        <span aria-label="Entrada pendiente de procesar" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#3f6b73] bg-[#0c2530] font-mono text-sm font-black text-[#7fd8d0] sm:mt-0.5">↧</span>
+      ) : (
+        <label className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#38506f] bg-[#0b1726] sm:mt-0.5">
+          <input type="checkbox" checked={isCompleted} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} onChange={(event) => onStatus(task.id, event.target.checked ? "completed" : "pending")} aria-label={`Completar ${task.title}`} className="h-4 w-4 accent-[#8ab4f8]" />
+        </label>
+      )}
 
       <button type="button" onClick={() => onOpen(task.id)} className="min-w-0 space-y-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#82afff]/50">
         <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto]">
@@ -408,7 +422,7 @@ function TaskRow({
               {task.title}
             </span>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#91a0bb]">
-              {depth > 0 ? <span>Subtarea</span> : <span>Tarea raiz</span>}
+              {task.aiSuggestion ? <span>Entrada capturada</span> : depth > 0 ? <span>Subtarea</span> : <span>Tarea raíz</span>}
               {task.hacerEl ? <span>Hacer {formatDate(task.hacerEl)}</span> : null}
               {task.venceEl ? <span>Vence {formatDate(task.venceEl)}</span> : null}
               <span>{getPriorityLabel(task.priority)}</span>
@@ -432,6 +446,16 @@ function TaskRow({
         ) : null}
         <span className="sr-only">Abrir detalle de {task.title}</span>
       </button>
+      {!isCompleted && task.aiSuggestion ? (
+        <InboxAiSuggestion
+          suggestion={task.aiSuggestion}
+          accounts={accounts}
+          subjects={subjects}
+          today={today}
+          onApply={(action) => onApplySuggestion(task.id, action)}
+          onOpenModule={onOpenModule}
+        />
+      ) : null}
     </article>
   );
 }
@@ -2543,6 +2567,7 @@ function SubjectHorizonBoard({
 export default function TaskManager() {
   const workspace = useTaskWorkspace();
   const [activeView, setActiveView] = useState<ViewKey>("today");
+  const [companionConversationCount, setCompanionConversationCount] = useState(0);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -2590,10 +2615,12 @@ export default function TaskManager() {
       if (
         event.key.toLowerCase() === "n" &&
         activeView !== "capture" &&
+        activeView !== "companion" &&
         activeView !== "subjects" &&
         activeView !== "finances" &&
         activeView !== "nutrition" &&
-        activeView !== "locations"
+        activeView !== "locations" &&
+        activeView !== "expectations"
       ) {
         event.preventDefault();
         setIsTaskModalOpen(true);
@@ -2605,7 +2632,7 @@ export default function TaskManager() {
   }, [activeView]);
 
   const visibleTasks = useMemo(() => {
-    if (activeView === "capture") {
+    if (activeView === "capture" || activeView === "companion") {
       return [];
     }
 
@@ -2645,6 +2672,10 @@ export default function TaskManager() {
       return [];
     }
 
+    if (activeView === "expectations") {
+      return [];
+    }
+
     if (selectedSubjectId) {
       return workspace.getTasksForSubject(selectedSubjectId);
     }
@@ -2663,10 +2694,12 @@ export default function TaskManager() {
 
   const navItems: { key: ViewKey; count: number }[] = [
     { key: "capture", count: workspace.views.inbox.length },
-    { key: "today", count: workspace.views.today.length },
+    { key: "companion", count: companionConversationCount },
+    { key: "today", count: getTodayOverviewCount(workspace) },
     { key: "inbox", count: workspace.views.inbox.length },
     { key: "upcoming", count: workspace.views.upcoming.length },
     { key: "waiting", count: workspace.views.waiting.length },
+    { key: "expectations", count: workspace.expectations.filter((item) => item.status === "pending").length },
     { key: "completed", count: workspace.views.completed.length },
     { key: "calendar", count: workspace.subjectEvents.length },
     { key: "subjects", count: workspace.subjects.length },
@@ -2694,6 +2727,22 @@ export default function TaskManager() {
   const completionRate = totalTasks
     ? Math.round((workspace.views.completed.length / totalTasks) * 100)
     : 0;
+
+  function applySuggestion(taskId: string, action: InboxSuggestionAction) {
+    switch (action.type) {
+      case "task":
+        workspace.patchTask(taskId, { ...action.draft, aiSuggestion: null });
+        return;
+      case "finance_entry": workspace.addFinanceEntry(action.draft); break;
+      case "finance_due_payment": workspace.addFinanceDuePayment(action.draft); break;
+      case "subject_event": workspace.addSubjectEvent(action.subjectId, action.draft); break;
+      case "location": workspace.addLocationEntry(action.draft); break;
+      case "nutrition_hydration": workspace.addNutritionHydration(action.draft); break;
+      case "nutrition_intake": workspace.addNutritionIntake(action.draft); break;
+      case "expectation": workspace.addExpectation(action.draft); break;
+    }
+    workspace.deleteTask(taskId);
+  }
 
   return (
     <main className="relative min-h-screen overflow-x-hidden bg-[#07111d] text-[#eaf1fb]">
@@ -2782,8 +2831,8 @@ export default function TaskManager() {
                   ref={searchRef}
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder={activeView === "finances" ? "Buscar movimientos y pagos…" : activeView === "nutrition" ? "Buscar alimentos y preparaciones…" : activeView === "locations" ? "Buscar lugares y notas…" : "Buscar en tu espacio…"}
-                  aria-label={activeView === "finances" ? "Buscar movimientos y pagos" : activeView === "nutrition" ? "Buscar alimentos y preparaciones" : activeView === "locations" ? "Buscar lugares y notas" : "Buscar en tu espacio"}
+                  placeholder={activeView === "companion" ? "Buscar conversaciones…" : activeView === "finances" ? "Buscar movimientos y pagos…" : activeView === "nutrition" ? "Buscar alimentos y preparaciones…" : activeView === "locations" ? "Buscar lugares y notas…" : "Buscar en tu espacio…"}
+                  aria-label={activeView === "companion" ? "Buscar conversaciones" : activeView === "finances" ? "Buscar movimientos y pagos" : activeView === "nutrition" ? "Buscar alimentos y preparaciones" : activeView === "locations" ? "Buscar lugares y notas" : "Buscar en tu espacio"}
                   className="h-11 w-full rounded-xl border border-[#2b4261] bg-[#0d1a2a] pl-10 pr-14 text-sm font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#667b9a] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
                 />
                 <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#8295b0] sm:block">/</kbd>
@@ -2825,10 +2874,18 @@ export default function TaskManager() {
                   <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
                     {activeView === "capture"
                       ? "Texto o voz / procesado con IA"
+                      : activeView === "companion"
+                      ? `${companionConversationCount} ${companionConversationCount === 1 ? "conversación guardada" : "conversaciones guardadas"}`
+                      : activeView === "today"
+                      ? hasSearch
+                        ? `${filteredTasks.length} tareas coinciden en una agenda de ${getTodayOverviewCount(workspace)} acciones`
+                        : `${getTodayOverviewCount(workspace)} ${getTodayOverviewCount(workspace) === 1 ? "acción" : "acciones"} entre todas tus secciones`
                       : activeView === "nutrition"
                       ? `${workspace.nutritionPlanItems.filter((item) => item.date === workspace.today).length} comidas planificadas hoy`
                       : activeView === "locations"
                       ? `${workspace.locationEntries.filter((item) => item.date === workspace.today).length} franjas planificadas hoy`
+                      : activeView === "expectations"
+                      ? `${workspace.expectations.filter((item) => item.status === "pending").length} ${workspace.expectations.filter((item) => item.status === "pending").length === 1 ? "espera pendiente" : "esperas pendientes"}`
                       : activeView === "finances"
                       ? `${workspace.financeEntries.length} ${workspace.financeEntries.length === 1 ? "movimiento" : "movimientos"} · ${workspace.financeDuePaymentCounts.pending} ${workspace.financeDuePaymentCounts.pending === 1 ? "pago pendiente" : "pagos pendientes"}`
                       : activeView === "calendar"
@@ -2877,7 +2934,7 @@ export default function TaskManager() {
                       Limpiar busqueda
                     </button>
                   ) : null}
-                  {activeView !== "capture" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "finances" && activeView !== "nutrition" && activeView !== "locations" ? (
+                  {activeView !== "capture" && activeView !== "companion" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "finances" && activeView !== "nutrition" && activeView !== "locations" && activeView !== "expectations" ? (
                     <button
                       type="button"
                       onClick={() => setIsTaskModalOpen(true)}
@@ -2894,8 +2951,46 @@ export default function TaskManager() {
                   onAddTask={workspace.addTask}
                   onOpenInbox={() => setActiveView("inbox")}
                 />
+              ) : activeView === "companion" ? (
+                <CompanionView
+                  searchQuery={searchQuery}
+                  onConversationCountChange={setCompanionConversationCount}
+                />
+              ) : activeView === "today" ? (
+                <TodayOverview
+                  workspace={workspace}
+                  searchQuery={searchQuery}
+                  taskCount={filteredTaskItems.length}
+                  taskContent={filteredTaskItems.length === 0 ? (
+                    <TaskEmptyState
+                      label={hasSearch ? "No hay tareas que coincidan." : "No hay tareas fechadas para hoy."}
+                      hint={hasSearch ? "Las otras secciones de la agenda también respetan esta búsqueda." : "El resto de tu agenda sigue visible debajo."}
+                    />
+                  ) : filteredTaskItems.map(({ task, depth }) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      subjects={workspace.subjects}
+                      phases={workspace.phases}
+                      depth={depth}
+                      today={workspace.today}
+                      onStatus={workspace.setTaskStatus}
+                      onOpen={setSelectedTaskId}
+                      accounts={workspace.financeAccounts}
+                      onApplySuggestion={applySuggestion}
+                      onOpenModule={setActiveView}
+                    />
+                  ))}
+                  onNavigate={setActiveView}
+                  onOpenSubject={(subjectId) => {
+                    setSelectedSubjectId(subjectId);
+                    setActiveView("subjects");
+                  }}
+                />
               ) : activeView === "locations" ? (
                 <LocationsView workspace={workspace} searchQuery={searchQuery} />
+              ) : activeView === "expectations" ? (
+                <ExpectationsView workspace={workspace} />
               ) : activeView === "nutrition" ? (
                 <NutritionView workspace={workspace} searchQuery={searchQuery} />
               ) : activeView === "finances" ? (
@@ -2996,6 +3091,9 @@ export default function TaskManager() {
                             today={workspace.today}
                             onStatus={workspace.setTaskStatus}
                             onOpen={setSelectedTaskId}
+                            accounts={workspace.financeAccounts}
+                            onApplySuggestion={applySuggestion}
+                            onOpenModule={setActiveView}
                           />
                         ))
                       )}
@@ -3029,6 +3127,9 @@ export default function TaskManager() {
                         today={workspace.today}
                         onStatus={workspace.setTaskStatus}
                         onOpen={setSelectedTaskId}
+                        accounts={workspace.financeAccounts}
+                        onApplySuggestion={applySuggestion}
+                        onOpenModule={setActiveView}
                       />
                     ))
                   )}

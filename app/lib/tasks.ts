@@ -16,6 +16,94 @@ export type TaskStatus = "pending" | "in_progress" | "waiting" | "completed";
 
 export type TaskPriority = "low" | "normal" | "high";
 
+export type FinanceEntrySuggestion = {
+  type: "finance_entry";
+  kind: "income" | "expense";
+  description: string;
+  amountMinor: number;
+  currency: string;
+  category: string;
+  date: DateOnly | null;
+  origin: string;
+  destination: string;
+};
+
+export type FinanceDuePaymentSuggestion = {
+  type: "finance_due_payment";
+  description: string;
+  amountMinor: number;
+  currency: string;
+  category: string;
+  dueDate: DateOnly | null;
+};
+
+export type TaskSuggestion = {
+  type: "task";
+  title: string;
+  notes: string;
+  priority: TaskPriority;
+  hacerEl: DateOnly | null;
+  venceEl: DateOnly | null;
+  subjectName: string;
+};
+
+export type SubjectEventSuggestion = {
+  type: "subject_event";
+  kind: SubjectEventKind;
+  description: string;
+  date: DateOnly | null;
+  subjectName: string;
+};
+
+export type LocationSuggestion = {
+  type: "location";
+  date: DateOnly | null;
+  startTime: string;
+  endTime: string;
+  plannedLocation: string;
+  actualLocation: string;
+  notes: string;
+};
+
+export type NutritionHydrationSuggestion = {
+  type: "nutrition_hydration";
+  date: DateOnly | null;
+  amountMl: number;
+};
+
+export type NutritionIntakeSuggestion = {
+  type: "nutrition_intake";
+  date: DateOnly | null;
+  mealType: "breakfast" | "lunch" | "snack" | "dinner" | "other";
+  description: string;
+  quantityMilli: number;
+  unitLabel: string;
+  energyKcalMilli: number;
+  proteinGramsMilli: number;
+  carbsGramsMilli: number;
+  fatGramsMilli: number;
+  fiberGramsMilli: number;
+};
+
+export type ExpectationSuggestion = {
+  type: "expectation";
+  title: string;
+  notes: string;
+  expectedDate: DateOnly | null;
+  quantity: number | null;
+  source: string;
+};
+
+export type TaskAiSuggestion =
+  | FinanceEntrySuggestion
+  | FinanceDuePaymentSuggestion
+  | TaskSuggestion
+  | SubjectEventSuggestion
+  | LocationSuggestion
+  | NutritionHydrationSuggestion
+  | NutritionIntakeSuggestion
+  | ExpectationSuggestion;
+
 export type SubjectHorizon = "short" | "medium" | "long" | "none";
 
 export type Subject = {
@@ -73,6 +161,7 @@ export type Task = {
   hacerEl: DateOnly | null;
   venceEl: DateOnly | null;
   priority: TaskPriority;
+  aiSuggestion: TaskAiSuggestion | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -88,10 +177,12 @@ export type TaskDraft = {
   hacerEl?: DateOnly | null;
   venceEl?: DateOnly | null;
   priority?: TaskPriority;
+  aiSuggestion?: TaskAiSuggestion | null;
 };
 
 export type WorkspaceData = {
   tasks: Task[];
+  expectations: Expectation[];
   subjects: Subject[];
   phases: SubjectPhase[];
   subjectEvents: SubjectEvent[];
@@ -107,6 +198,24 @@ export type WorkspaceData = {
   nutritionShoppingLists: NutritionShoppingList[];
   locationEntries: LocationEntry[];
 };
+
+export type ExpectationStatus = "pending" | "occurred" | "not_occurred";
+
+export type Expectation = {
+  id: string;
+  title: string;
+  notes: string;
+  expectedDate: DateOnly;
+  quantity: number | null;
+  source: string;
+  status: ExpectationStatus;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ExpectationDraft = Pick<Expectation, "title" | "expectedDate"> &
+  Partial<Pick<Expectation, "notes" | "quantity" | "source">>;
 
 export type TaskTreeItem = {
   task: Task;
@@ -136,6 +245,7 @@ export const subjectHorizons: { value: SubjectHorizon; label: string }[] = [
 export function emptyWorkspace(): WorkspaceData {
   return {
     tasks: [],
+    expectations: [],
     subjects: [],
     phases: [],
     subjectEvents: [],
@@ -189,6 +299,93 @@ export function isValidDateOnly(value: unknown): value is DateOnly {
   );
 }
 
+export function normalizeTaskAiSuggestion(value: unknown): TaskAiSuggestion | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const requiredText = (key: string) =>
+    typeof candidate[key] === "string" && Boolean((candidate[key] as string).trim());
+  const optionalDate = (key: string) =>
+    candidate[key] === null || isValidDateOnly(candidate[key]);
+  const positiveInteger = (key: string) =>
+    Number.isSafeInteger(candidate[key]) && (candidate[key] as number) > 0;
+  const nonNegativeInteger = (key: string) =>
+    Number.isSafeInteger(candidate[key]) && (candidate[key] as number) >= 0;
+  const clean = (key: string) => (candidate[key] as string).trim();
+
+  switch (candidate.type) {
+    case "finance_entry":
+      if (!(["income", "expense"] as unknown[]).includes(candidate.kind) || !requiredText("description") ||
+          !positiveInteger("amountMinor") || typeof candidate.currency !== "string" ||
+          !/^[A-Z]{3}$/.test(candidate.currency) || typeof candidate.category !== "string" ||
+          !optionalDate("date") || typeof candidate.origin !== "string" || typeof candidate.destination !== "string") return null;
+      return { ...candidate, type: "finance_entry", kind: candidate.kind as "income" | "expense",
+        description: clean("description"), category: clean("category"), origin: clean("origin"),
+        destination: clean("destination") } as FinanceEntrySuggestion;
+    case "finance_due_payment":
+      if (!requiredText("description") || !positiveInteger("amountMinor") || typeof candidate.currency !== "string" ||
+          !/^[A-Z]{3}$/.test(candidate.currency) || typeof candidate.category !== "string" || !optionalDate("dueDate")) return null;
+      return { ...candidate, type: "finance_due_payment", description: clean("description"), category: clean("category") } as FinanceDuePaymentSuggestion;
+    case "task":
+      if (!requiredText("title") || typeof candidate.notes !== "string" ||
+          !(["low", "normal", "high"] as unknown[]).includes(candidate.priority) || !optionalDate("hacerEl") ||
+          !optionalDate("venceEl") || typeof candidate.subjectName !== "string") return null;
+      return { ...candidate, type: "task", title: clean("title"), notes: clean("notes"), subjectName: clean("subjectName") } as TaskSuggestion;
+    case "subject_event":
+      if (!(["milestone", "deadline"] as unknown[]).includes(candidate.kind) || !requiredText("description") ||
+          !optionalDate("date") || typeof candidate.subjectName !== "string") return null;
+      return { ...candidate, type: "subject_event", description: clean("description"), subjectName: clean("subjectName") } as SubjectEventSuggestion;
+    case "location":
+      if (!optionalDate("date") || typeof candidate.startTime !== "string" || typeof candidate.endTime !== "string" ||
+          !requiredText("plannedLocation") || typeof candidate.actualLocation !== "string" || typeof candidate.notes !== "string") return null;
+      return { ...candidate, type: "location", plannedLocation: clean("plannedLocation"), actualLocation: clean("actualLocation"), notes: clean("notes") } as LocationSuggestion;
+    case "nutrition_hydration":
+      if (!optionalDate("date") || !positiveInteger("amountMl")) return null;
+      return candidate as NutritionHydrationSuggestion;
+    case "nutrition_intake":
+      if (!optionalDate("date") || !(["breakfast", "lunch", "snack", "dinner", "other"] as unknown[]).includes(candidate.mealType) ||
+          !requiredText("description") || !positiveInteger("quantityMilli") || !requiredText("unitLabel") ||
+          !["energyKcalMilli", "proteinGramsMilli", "carbsGramsMilli", "fatGramsMilli", "fiberGramsMilli"].every(nonNegativeInteger)) return null;
+      return { ...candidate, type: "nutrition_intake", description: clean("description"), unitLabel: clean("unitLabel") } as NutritionIntakeSuggestion;
+    case "expectation":
+      if (!requiredText("title") || typeof candidate.notes !== "string" || !optionalDate("expectedDate") ||
+          !(candidate.quantity === null || positiveInteger("quantity")) || typeof candidate.source !== "string") return null;
+      return { ...candidate, type: "expectation", title: clean("title"), notes: clean("notes"), source: clean("source") } as ExpectationSuggestion;
+    default:
+      return null;
+  }
+}
+
+export function createExpectation(draft: ExpectationDraft, now = new Date()): Expectation | null {
+  if (!draft.title.trim() || !isValidDateOnly(draft.expectedDate) ||
+      !(draft.quantity === undefined || draft.quantity === null || (Number.isSafeInteger(draft.quantity) && draft.quantity > 0))) return null;
+  const timestamp = now.toISOString();
+  return { id: createId("expectation"), title: draft.title.trim(), notes: draft.notes?.trim() ?? "",
+    expectedDate: draft.expectedDate, quantity: draft.quantity ?? null, source: draft.source?.trim() ?? "",
+    status: "pending", resolvedAt: null, createdAt: timestamp, updatedAt: timestamp };
+}
+
+export function patchExpectation(expectation: Expectation, patch: Partial<ExpectationDraft>, now = new Date()): Expectation | null {
+  const next = { ...expectation, ...patch, title: patch.title?.trim() ?? expectation.title,
+    notes: patch.notes?.trim() ?? expectation.notes, source: patch.source?.trim() ?? expectation.source,
+    updatedAt: now.toISOString() };
+  return next.title && isValidDateOnly(next.expectedDate) &&
+    (next.quantity === null || (Number.isSafeInteger(next.quantity) && next.quantity > 0)) ? next : null;
+}
+
+export function setExpectationStatus(expectation: Expectation, status: ExpectationStatus, now = new Date()): Expectation {
+  const timestamp = now.toISOString();
+  return { ...expectation, status, resolvedAt: status === "pending" ? null : timestamp, updatedAt: timestamp };
+}
+
+export function sortedExpectations(expectations: Expectation[]): Expectation[] {
+  const statusOrder: Record<ExpectationStatus, number> = { pending: 0, not_occurred: 1, occurred: 2 };
+  return [...expectations].sort((a, b) => statusOrder[a.status] - statusOrder[b.status] ||
+    a.expectedDate.localeCompare(b.expectedDate) || a.createdAt.localeCompare(b.createdAt));
+}
+
 export function isSubjectEventKind(value: unknown): value is SubjectEventKind {
   return value === "milestone" || value === "deadline";
 }
@@ -232,6 +429,7 @@ export function normalizeTaskDraft(draft: TaskDraft, now = new Date()): Task {
     hacerEl: draft.hacerEl || null,
     venceEl: draft.venceEl || null,
     priority: draft.priority ?? "normal",
+    aiSuggestion: draft.aiSuggestion ?? null,
     createdAt: timestamp,
     updatedAt: timestamp,
     completedAt: draft.status === "completed" ? timestamp : null,

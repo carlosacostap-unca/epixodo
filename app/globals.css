@@ -107,6 +107,26 @@ textarea:disabled {
   display: none;
 }
 
+.companion-thread > article::before,
+.companion-thread > div:not(:last-child)::before {
+  background: linear-gradient(to bottom, rgb(183 166 255 / 0.36), rgb(130 175 255 / 0.08));
+  content: "";
+  inset-block: 20px -25px;
+  left: 12px;
+  position: absolute;
+  width: 1px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .companion-orb {
+    animation: companion-breathe 4.5s ease-in-out infinite;
+  }
+
+  @keyframes companion-breathe {
+    50% { box-shadow: 0 0 54px rgb(183 166 255 / 0.32); transform: scale(1.035); }
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .view-enter {
     animation: view-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;

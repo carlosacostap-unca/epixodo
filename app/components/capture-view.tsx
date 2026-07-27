@@ -71,6 +71,7 @@ export default function CaptureView({
       hacerEl: null,
       venceEl: null,
       priority: "normal",
+      aiSuggestion: result.suggestion,
     });
     setLastCapture(result);
     setText("");
@@ -279,6 +280,31 @@ export default function CaptureView({
                 <p className="mt-1 text-sm text-[#7f93b0]">
                   {state === "recording" ? "Tocá otra vez para detener y guardar" : "Hablá con naturalidad; no hace falta dictar un formato."}
                 </p>
+                {state !== "recording" ? (
+                  <div className="mt-5">
+                    <input
+                      id="capture-audio-file"
+                      type="file"
+                      accept="audio/*,.webm,.wav,.mp3,.m4a,.ogg,.mp4"
+                      disabled={isProcessing}
+                      className="sr-only"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file) void processAudio(file);
+                      }}
+                    />
+                    <label
+                      htmlFor="capture-audio-file"
+                      aria-disabled={isProcessing}
+                      className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#3b5b80] px-4 py-2.5 text-sm font-black text-[#c9dcfa] transition hover:border-[#82afff] hover:bg-[#142b48] focus-within:ring-2 focus-within:ring-[#82afff]/30 ${isProcessing ? "pointer-events-none opacity-50" : ""}`}
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M5 14v5h14v-5" /></svg>
+                      Subir archivo de audio
+                    </label>
+                    <p className="mt-2 text-xs text-[#667d99]">Hasta 15 MB.</p>
+                  </div>
+                ) : null}
               </div>
             </div>
           )}
@@ -300,6 +326,16 @@ export default function CaptureView({
             </span>
             <h4 className="mt-5 text-xl font-black leading-tight text-[#f4f7fc]">{lastCapture.title}</h4>
             {lastCapture.notes ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#9fb0c9]">{lastCapture.notes}</p> : null}
+            {lastCapture.suggestion ? (
+              <div className="mt-4 rounded-xl border border-[#3d6588] bg-[#10283b] px-4 py-3">
+                <p className="font-mono text-[10px] font-black uppercase tracking-[0.14em] text-[#7fd8d0]">
+                  Tipo de ítem detectado
+                </p>
+                <p className="mt-1 text-sm font-bold text-[#dcebf5]">
+                  La Bandeja incluirá un formulario con los campos sugeridos, listo para revisar y confirmar.
+                </p>
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={onOpenInbox}

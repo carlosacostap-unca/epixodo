@@ -9,6 +9,7 @@ import {
 } from "../lib/task-storage";
 import {
   createSubject,
+  createExpectation,
   createSubjectEvent,
   createSubjectPhase,
   emptyWorkspace,
@@ -29,13 +30,18 @@ import {
   normalizeTaskPhaseAssignment,
   patchSubjectEvent,
   reorderSubjectPhases,
+  patchExpectation,
   removePhaseFromWorkspace,
   removeSubjectEventFromWorkspace,
   removeSubjectFromWorkspace,
   sortedSubjectPhases,
+  sortedExpectations,
+  setExpectationStatus,
   uniqueIds,
   updateTaskStatus,
   type Subject,
+  type ExpectationDraft,
+  type ExpectationStatus,
   type SubjectEvent,
   type SubjectEventDraft,
   type SubjectHorizon,
@@ -112,6 +118,7 @@ type TaskPatch = Partial<
     | "venceEl"
     | "priority"
     | "status"
+    | "aiSuggestion"
   >
 >;
 
@@ -140,6 +147,7 @@ export function useTaskWorkspace() {
 
       if (
         localWorkspace.tasks.length > 0 ||
+        localWorkspace.expectations.length > 0 ||
         localWorkspace.subjects.length > 0 ||
         localWorkspace.phases.length > 0 ||
         localWorkspace.subjectEvents.length > 0 ||
@@ -162,6 +170,7 @@ export function useTaskWorkspace() {
         const remoteWorkspace = await loadRemoteWorkspace();
         const hasRemoteData =
           remoteWorkspace.tasks.length > 0 ||
+          remoteWorkspace.expectations.length > 0 ||
           remoteWorkspace.subjects.length > 0 ||
           remoteWorkspace.phases.length > 0 ||
           remoteWorkspace.subjectEvents.length > 0 ||
@@ -178,6 +187,7 @@ export function useTaskWorkspace() {
           remoteWorkspace.locationEntries.length > 0;
         const hasLocalData =
           localWorkspace.tasks.length > 0 ||
+          localWorkspace.expectations.length > 0 ||
           localWorkspace.subjects.length > 0 ||
           localWorkspace.phases.length > 0 ||
           localWorkspace.subjectEvents.length > 0 ||
@@ -328,6 +338,10 @@ export function useTaskWorkspace() {
   const nutritionCurrentWeekPlan = useMemo(
     () => getPlanItemsForWeek(workspace.nutritionPlanItems, today),
     [today, workspace.nutritionPlanItems],
+  );
+  const orderedExpectations = useMemo(
+    () => sortedExpectations(workspace.expectations),
+    [workspace.expectations],
   );
 
   function addTask(draft: TaskDraft) {
@@ -569,6 +583,28 @@ export function useTaskWorkspace() {
 
   function deletePhase(phaseId: string) {
     setWorkspace((current) => removePhaseFromWorkspace(current, phaseId));
+  }
+
+  function addExpectation(draft: ExpectationDraft) {
+    const expectation = createExpectation(draft);
+    if (expectation) setWorkspace((current) => ({ ...current, expectations: [expectation, ...current.expectations] }));
+  }
+
+  function updateExpectation(expectationId: string, patch: Partial<ExpectationDraft>) {
+    setWorkspace((current) => {
+      const expectation = current.expectations.find((item) => item.id === expectationId);
+      const updated = expectation ? patchExpectation(expectation, patch) : null;
+      return updated ? { ...current, expectations: current.expectations.map((item) => item.id === expectationId ? updated : item) } : current;
+    });
+  }
+
+  function updateExpectationStatus(expectationId: string, status: ExpectationStatus) {
+    setWorkspace((current) => ({ ...current, expectations: current.expectations.map((item) =>
+      item.id === expectationId ? setExpectationStatus(item, status) : item) }));
+  }
+
+  function deleteExpectation(expectationId: string) {
+    setWorkspace((current) => ({ ...current, expectations: current.expectations.filter((item) => item.id !== expectationId) }));
   }
 
   function addSubjectEvent(subjectId: string, draft: SubjectEventDraft) {
@@ -1021,7 +1057,12 @@ export function useTaskWorkspace() {
     financeDuePaymentCounts,
     nutritionTodaySummary,
     nutritionCurrentWeekPlan,
+    orderedExpectations,
     addTask,
+    addExpectation,
+    updateExpectation,
+    updateExpectationStatus,
+    deleteExpectation,
     patchTask,
     setTaskStatus,
     setTaskPriority,

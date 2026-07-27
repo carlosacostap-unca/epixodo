@@ -16,7 +16,7 @@ const date = (required = false) => ({ type: "date", required });
 const select = (required = true) => ({ type: "select", required });
 const json = () => ({ type: "json", required: false });
 const bool = () => ({ type: "bool", required: false });
-const editor = () => ({ type: "editor", required: false });
+const editor = (required = false) => ({ type: "editor", required });
 
 export const normalizedSchema = {
   subjects: { fields: fields({ name: text(true), horizon: select(), parent: relation("subjects", false) }) },
@@ -37,6 +37,8 @@ export const normalizedSchema = {
   nutrition_shopping_lists: { fields: fields({ name: text(true), start_date: text(true), end_date: text(true) }) },
   nutrition_shopping_items: { fields: fields({ shopping_list: relation("nutrition_shopping_lists"), food: relation("nutrition_foods", false), label: text(true), quantity_milli: number(), unit: select(), checked: bool(), manual: bool(), position: number(false) }) },
   location_entries: { fields: fields({ entry_date: text(true), start_time: text(true), end_time: text(true), planned_location: text(true), actual_location: text(), notes: text() }) },
+  companion_conversations: { fields: fields({ title: text(true) }) },
+  companion_messages: { fields: fields({ conversation: relation("companion_conversations"), role: select(), content: editor(true) }) },
   workspace_migrations: { fields: fields({ legacy_key: text(true), legacy_sha256: text(true), migration_status: select(), bucket_counts: json(), migrated_at: date(true) }) },
 };
 

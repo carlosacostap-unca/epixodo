@@ -1,4 +1,4 @@
-import type { WorkspaceData } from "./tasks";
+import type { Expectation, TaskAiSuggestion, WorkspaceData } from "./tasks";
 
 type RequestOptions = { method?: string; body?: unknown; auth?: boolean };
 export type PocketBaseRequester = <T>(path: string, options?: RequestOptions) => Promise<T>;
@@ -75,6 +75,63 @@ function toIso(value: string) {
 
 function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+const taskSuggestionMarker = /\n\n<!-- epixodo-ai-suggestion:([^\s]+) -->$/;
+const expectationMarker = /^<!-- epixodo-expectation:([^\s]+) -->$/;
+
+function normalizeStoredTaskSuggestion(value: unknown): TaskAiSuggestion | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const supportedTypes = new Set([
+    "finance_entry", "finance_due_payment", "task", "subject_event", "location",
+    "nutrition_hydration", "nutrition_intake",
+    "expectation",
+  ]);
+  return typeof candidate.type === "string" && supportedTypes.has(candidate.type)
+    ? candidate as TaskAiSuggestion
+    : null;
+}
+
+function encodeTaskNotes(notes: string, suggestion: TaskAiSuggestion | null) {
+  if (!suggestion) return notes;
+  return `${notes}\n\n<!-- epixodo-ai-suggestion:${encodeURIComponent(JSON.stringify(suggestion))} -->`;
+}
+
+function decodeTaskNotes(value: string) {
+  const match = value.match(taskSuggestionMarker);
+  if (!match) return { notes: value, aiSuggestion: null };
+
+  try {
+    return {
+      notes: value.slice(0, match.index).trimEnd(),
+      aiSuggestion: normalizeStoredTaskSuggestion(JSON.parse(decodeURIComponent(match[1]))),
+    };
+  } catch {
+    return { notes: value, aiSuggestion: null };
+  }
+}
+
+function encodeExpectationNotes(expectation: Expectation) {
+  const stored = { notes: expectation.notes, expectedDate: expectation.expectedDate, quantity: expectation.quantity,
+    source: expectation.source, status: expectation.status, resolvedAt: expectation.resolvedAt };
+  return `<!-- epixodo-expectation:${encodeURIComponent(JSON.stringify(stored))} -->`;
+}
+
+function decodeExpectation(record: RecordData): Expectation | null {
+  const match = text(record, "notes").match(expectationMarker);
+  if (!match) return null;
+  try {
+    const value = JSON.parse(decodeURIComponent(match[1])) as Record<string, unknown>;
+    if (typeof value.expectedDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value.expectedDate) ||
+        !["pending", "occurred", "not_occurred"].includes(String(value.status))) return null;
+    return { id: record.client_id, title: text(record, "title"),
+      notes: typeof value.notes === "string" ? value.notes : "", expectedDate: value.expectedDate,
+      quantity: typeof value.quantity === "number" && Number.isSafeInteger(value.quantity) && value.quantity > 0 ? value.quantity : null,
+      source: typeof value.source === "string" ? value.source : "", status: value.status as Expectation["status"],
+      resolvedAt: typeof value.resolvedAt === "string" ? value.resolvedAt : null,
+      createdAt: clientCreatedAt(record), updatedAt: clientUpdatedAt(record) };
+  } catch { return null; }
 }
 
 async function listOwnedRecords(
@@ -201,10 +258,12 @@ export async function getNormalizedWorkspace(
       createdAt: clientCreatedAt(record),
       updatedAt: clientUpdatedAt(record),
     })),
-    tasks: data.tasks.map((record) => ({
+    tasks: data.tasks.filter((record) => !decodeExpectation(record)).map((record) => {
+      const decodedNotes = decodeTaskNotes(text(record, "notes"));
+      return {
       id: record.client_id,
       title: text(record, "title"),
-      notes: text(record, "notes"),
+      notes: decodedNotes.notes,
       status: text(record, "status") as WorkspaceData["tasks"][number]["status"],
       subjectIds: (taskSubjects.get(record.id) ?? []).sort(),
       phaseId: clientIdByRecordId.get(relation(record, "phase")) ?? null,
@@ -212,12 +271,14 @@ export async function getNormalizedWorkspace(
       hacerEl: optionalText(record, "do_on"),
       venceEl: optionalText(record, "due_on"),
       priority: text(record, "priority") as WorkspaceData["tasks"][number]["priority"],
+      aiSuggestion: decodedNotes.aiSuggestion,
       completedAt: optionalText(record, "completed_at")
         ? toIso(text(record, "completed_at"))
         : null,
       createdAt: clientCreatedAt(record),
       updatedAt: clientUpdatedAt(record),
-    })),
+    };
+    }),
     financeAccounts: data.financeAccounts.map((record) => ({
       id: record.client_id,
       name: text(record, "name"),
@@ -227,6 +288,7 @@ export async function getNormalizedWorkspace(
       createdAt: clientCreatedAt(record),
       updatedAt: clientUpdatedAt(record),
     })),
+    expectations: data.tasks.map(decodeExpectation).filter((item): item is Expectation => Boolean(item)),
     financeEntries: data.financeEntries.map((record) => ({
       id: record.client_id,
       accountId: clientIdByRecordId.get(relation(record, "account")) ?? "",
@@ -465,10 +527,15 @@ export async function saveNormalizedWorkspace(
   remember(collections.phases, result.stale);
   const phases = recordMap(result.records);
 
-  result = await upsertRows(request, collections.tasks, ownerId, workspace.tasks.map((task) => ({
+  const expectationRows = workspace.expectations.map((expectation) => ({
+    client_id: expectation.id, title: expectation.title, notes: encodeExpectationNotes(expectation),
+    status: expectation.status === "pending" ? "waiting" : "completed", phase: "", parent: "",
+    do_on: "", due_on: "", priority: "normal", completed_at: expectation.resolvedAt ?? "", ...stamps(expectation),
+  }));
+  result = await upsertRows(request, collections.tasks, ownerId, [...workspace.tasks.map((task) => ({
     client_id: task.id,
     title: task.title,
-    notes: task.notes,
+    notes: encodeTaskNotes(task.notes, task.aiSuggestion),
     status: task.status,
     phase: task.phaseId ? requireRelation(phases, task.phaseId) : "",
     do_on: task.hacerEl ?? "",
@@ -476,13 +543,13 @@ export async function saveNormalizedWorkspace(
     priority: task.priority,
     completed_at: task.completedAt ?? "",
     ...stamps(task),
-  })));
+  })), ...expectationRows]);
   remember(collections.tasks, result.stale);
   let tasks = recordMap(result.records);
-  result = await upsertRows(request, collections.tasks, ownerId, workspace.tasks.map((task) => ({
+  result = await upsertRows(request, collections.tasks, ownerId, [...workspace.tasks.map((task) => ({
     client_id: task.id,
     title: task.title,
-    notes: task.notes,
+    notes: encodeTaskNotes(task.notes, task.aiSuggestion),
     status: task.status,
     phase: task.phaseId ? requireRelation(phases, task.phaseId) : "",
     parent: task.parentTaskId ? requireRelation(tasks, task.parentTaskId) : "",
@@ -491,7 +558,7 @@ export async function saveNormalizedWorkspace(
     priority: task.priority,
     completed_at: task.completedAt ?? "",
     ...stamps(task),
-  })));
+  })), ...expectationRows]);
   tasks = recordMap(result.records);
 
   result = await upsertRows(request, collections.taskSubjects, ownerId, workspace.tasks.flatMap((task) =>
@@ -692,7 +759,7 @@ async function verifyDesiredIdentities(
   const expectations: [string, string[]][] = [
     [collections.subjects, workspace.subjects.map((item) => item.id)],
     [collections.phases, workspace.phases.map((item) => item.id)],
-    [collections.tasks, workspace.tasks.map((item) => item.id)],
+    [collections.tasks, [...workspace.tasks.map((item) => item.id), ...workspace.expectations.map((item) => item.id)]],
     [collections.taskSubjects, workspace.tasks.flatMap((task) => task.subjectIds.map((subjectId) => `${task.id}::${subjectId}`))],
     [collections.events, workspace.subjectEvents.map((item) => item.id)],
     [collections.locations, workspace.locationEntries.map((item) => item.id)],
@@ -745,7 +812,12 @@ function workspaceSignature(workspace: WorkspaceData) {
     subjects: [...workspace.subjects].sort(byId),
     phases: [...workspace.phases].sort(byId),
     subjectEvents: [...workspace.subjectEvents].sort(byId),
-    tasks: workspace.tasks.map((task) => ({ ...task, subjectIds: [...task.subjectIds].sort() })).sort(byId),
+    tasks: workspace.tasks.map((task) => ({
+      ...task,
+      aiSuggestion: task.aiSuggestion ?? null,
+      subjectIds: [...task.subjectIds].sort(),
+    })).sort(byId),
+    expectations: [...workspace.expectations].sort(byId),
     financeAccounts: [...workspace.financeAccounts].sort(byId),
     financeEntries: [...workspace.financeEntries].sort(byId),
     financeDuePayments: [...workspace.financeDuePayments].sort(byId),

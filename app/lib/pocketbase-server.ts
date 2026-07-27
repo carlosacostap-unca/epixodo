@@ -47,9 +47,11 @@ function getTokenExpiry(token: string) {
   }
 }
 
+export type PocketBaseRequestOptions = { method?: string; body?: unknown; auth?: boolean };
+
 export async function pocketBaseRequest<T>(
   apiPath: string,
-  options: { method?: string; body?: unknown; auth?: boolean } = {},
+  options: PocketBaseRequestOptions = {},
 ): Promise<T> {
   const url = new URL(apiPath, `${getPocketBaseUrl()}/`);
   const headers: HeadersInit = options.body ? { "Content-Type": "application/json" } : {};
