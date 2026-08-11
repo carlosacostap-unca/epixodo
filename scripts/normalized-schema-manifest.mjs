@@ -20,13 +20,14 @@ const editor = (required = false) => ({ type: "editor", required });
 
 export const normalizedSchema = {
   subjects: { fields: fields({ name: text(true), horizon: select(), parent: relation("subjects", false) }) },
+  subject_deliverables: { fields: fields({ subject: relation("subjects"), name: text(true), description: editor(true) }) },
   subject_phases: { fields: fields({ subject: relation("subjects"), name: text(true), planned_start: text(), executed_start: text(), planned_end: text(), executed_end: text(), position: number(false) }) },
   subject_events: { fields: fields({ subject: relation("subjects"), phase: relation("subject_phases", false), kind: select(), description: text(true), event_date: text(true) }) },
-  tasks: { fields: fields({ title: text(true), notes: editor(), status: select(), phase: relation("subject_phases", false), parent: relation("tasks", false), do_on: text(), due_on: text(), priority: select(), completed_at: date() }) },
+  tasks: { fields: fields({ title: text(true), notes: editor(), status: select(), phase: relation("subject_phases", false), deliverable: relation("subject_deliverables", false), parent: relation("tasks", false), do_on: text(), due_on: text(), priority: select(), completed_at: date() }) },
   task_subjects: { fields: fields({ task: relation("tasks"), subject: relation("subjects") }) },
   finance_accounts: { fields: fields({ name: text(true), account_type: select(), currency: text(true), opening_balance_minor: number() }) },
   finance_entries: { fields: fields({ account: relation("finance_accounts"), entry_kind: select(), entry_date: text(true), description: text(true), amount_minor: number(), category: text() }) },
-  finance_due_payments: { fields: fields({ account: relation("finance_accounts"), description: text(true), amount_minor: number(), due_date: text(true), category: text(), payment_status: select(), paid_at: date() }) },
+  finance_due_payments: { fields: fields({ account: relation("finance_accounts", false), description: text(true), amount_minor: number(), currency: text(true), due_date: text(true), category: text(), payment_status: select(), paid_at: date() }) },
   nutrition_profiles: { fields: fields({ energy_goal_kcal_milli: number(false), protein_goal_grams_milli: number(false), carbs_goal_grams_milli: number(false), fat_goal_grams_milli: number(false), fiber_goal_grams_milli: number(false), water_goal_ml: number(false), preferences: json(), allergies: json(), intolerances: json() }) },
   nutrition_foods: { fields: fields({ name: text(true), reference_quantity_milli: number(), unit: select(), energy_kcal_milli: number(), protein_grams_milli: number(), carbs_grams_milli: number(), fat_grams_milli: number(), fiber_grams_milli: number() }) },
   nutrition_recipes: { fields: fields({ name: text(true), servings_milli: number() }) },

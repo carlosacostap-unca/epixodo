@@ -28,9 +28,12 @@ POCKETBASE_USERS_COLLECTION=users
 
 `POCKETBASE_USERS_COLLECTION` is optional and defaults to `users`. Domain data is
 stored in normalized PocketBase collections and every server query is scoped to
-the authenticated user ID. Validate the remote schema with:
+the authenticated user ID. Apply the deliverables extension and validate the
+remote schema with:
 
 ```bash
+npm run schema:deliverables
+npm run schema:finance-due-payments
 npm run schema:normalized:validate
 ```
 

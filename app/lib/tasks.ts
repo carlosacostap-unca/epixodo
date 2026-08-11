@@ -115,6 +115,17 @@ export type Subject = {
   updatedAt: string;
 };
 
+export type SubjectDeliverable = {
+  id: string;
+  subjectId: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SubjectDeliverableDraft = Pick<SubjectDeliverable, "name" | "description">;
+
 export type SubjectPhase = {
   id: string;
   subjectId: string;
@@ -157,6 +168,7 @@ export type Task = {
   status: TaskStatus;
   subjectIds: string[];
   phaseId: string | null;
+  deliverableId: string | null;
   parentTaskId: string | null;
   hacerEl: DateOnly | null;
   venceEl: DateOnly | null;
@@ -173,6 +185,7 @@ export type TaskDraft = {
   status?: TaskStatus;
   subjectIds?: string[];
   phaseId?: string | null;
+  deliverableId?: string | null;
   parentTaskId?: string | null;
   hacerEl?: DateOnly | null;
   venceEl?: DateOnly | null;
@@ -184,6 +197,7 @@ export type WorkspaceData = {
   tasks: Task[];
   expectations: Expectation[];
   subjects: Subject[];
+  deliverables: SubjectDeliverable[];
   phases: SubjectPhase[];
   subjectEvents: SubjectEvent[];
   financeAccounts: FinanceAccount[];
@@ -247,6 +261,7 @@ export function emptyWorkspace(): WorkspaceData {
     tasks: [],
     expectations: [],
     subjects: [],
+    deliverables: [],
     phases: [],
     subjectEvents: [],
     financeAccounts: [],
@@ -425,6 +440,7 @@ export function normalizeTaskDraft(draft: TaskDraft, now = new Date()): Task {
     status: draft.status ?? "pending",
     subjectIds: uniqueIds(draft.subjectIds),
     phaseId: draft.phaseId || null,
+    deliverableId: draft.deliverableId || null,
     parentTaskId: draft.parentTaskId || null,
     hacerEl: draft.hacerEl || null,
     venceEl: draft.venceEl || null,
@@ -433,6 +449,92 @@ export function normalizeTaskDraft(draft: TaskDraft, now = new Date()): Task {
     createdAt: timestamp,
     updatedAt: timestamp,
     completedAt: draft.status === "completed" ? timestamp : null,
+  };
+}
+
+export function isValidSubjectDeliverableDraft(draft: SubjectDeliverableDraft): boolean {
+  return Boolean(draft.name.trim() && draft.description.trim());
+}
+
+export function createSubjectDeliverable(
+  subjectId: string,
+  draft: SubjectDeliverableDraft,
+  now = new Date(),
+): SubjectDeliverable {
+  const timestamp = now.toISOString();
+
+  return {
+    id: createId("deliverable"),
+    subjectId,
+    name: draft.name.trim(),
+    description: draft.description.trim(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function patchSubjectDeliverable(
+  deliverable: SubjectDeliverable,
+  patch: Partial<SubjectDeliverableDraft>,
+  now = new Date(),
+): SubjectDeliverable | null {
+  const updated = {
+    ...deliverable,
+    name: patch.name?.trim() ?? deliverable.name,
+    description: patch.description?.trim() ?? deliverable.description,
+    updatedAt: now.toISOString(),
+  };
+
+  return isValidSubjectDeliverableDraft(updated) ? updated : null;
+}
+
+export function sortedSubjectDeliverables(
+  deliverables: SubjectDeliverable[],
+  subjectId?: string,
+): SubjectDeliverable[] {
+  return deliverables
+    .filter((deliverable) => !subjectId || deliverable.subjectId === subjectId)
+    .sort(
+      (a, b) =>
+        a.createdAt.localeCompare(b.createdAt) ||
+        a.name.localeCompare(b.name, "es") ||
+        a.id.localeCompare(b.id),
+    );
+}
+
+export function getTaskAvailableDeliverables(
+  deliverables: SubjectDeliverable[],
+  subjectIds: string[],
+): SubjectDeliverable[] {
+  const selectedSubjectIds = new Set(subjectIds);
+  return sortedSubjectDeliverables(deliverables).filter((deliverable) =>
+    selectedSubjectIds.has(deliverable.subjectId),
+  );
+}
+
+export function normalizeTaskDeliverableAssignment(
+  deliverables: SubjectDeliverable[],
+  subjectIds: string[],
+  deliverableId: string | null | undefined,
+): string | null {
+  if (!deliverableId) return null;
+  const deliverable = deliverables.find((item) => item.id === deliverableId);
+  return deliverable && subjectIds.includes(deliverable.subjectId) ? deliverable.id : null;
+}
+
+export function removeSubjectDeliverableFromWorkspace(
+  workspace: WorkspaceData,
+  deliverableId: string,
+  updatedAt = new Date().toISOString(),
+): WorkspaceData {
+  return {
+    ...workspace,
+    deliverables: (workspace.deliverables ?? []).filter((item) => item.id !== deliverableId),
+    tasks: workspace.tasks.map((task) =>
+      task.deliverableId === deliverableId
+        ? { ...task, deliverableId: null, updatedAt }
+        : task,
+    ),
   };
 }
 
@@ -667,10 +769,18 @@ export function removeSubjectFromWorkspace(
       .filter((phase) => deletedSubjectIds.has(phase.subjectId))
       .map((phase) => phase.id),
   );
+  const deletedDeliverableIds = new Set(
+    (workspace.deliverables ?? [])
+      .filter((deliverable) => deletedSubjectIds.has(deliverable.subjectId))
+      .map((deliverable) => deliverable.id),
+  );
 
   return {
     ...workspace,
     subjects: workspace.subjects.filter((subject) => !deletedSubjectIds.has(subject.id)),
+    deliverables: (workspace.deliverables ?? []).filter(
+      (deliverable) => !deletedDeliverableIds.has(deliverable.id),
+    ),
     phases: workspace.phases.filter((phase) => !deletedPhaseIds.has(phase.id)),
     subjectEvents: (workspace.subjectEvents ?? []).filter(
       (event) => !deletedSubjectIds.has(event.subjectId),
@@ -679,6 +789,10 @@ export function removeSubjectFromWorkspace(
       ...task,
       subjectIds: task.subjectIds.filter((id) => !deletedSubjectIds.has(id)),
       phaseId: task.phaseId && deletedPhaseIds.has(task.phaseId) ? null : task.phaseId,
+      deliverableId:
+        task.deliverableId && deletedDeliverableIds.has(task.deliverableId)
+          ? null
+          : task.deliverableId,
       updatedAt,
     })),
   };

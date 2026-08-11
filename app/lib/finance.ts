@@ -36,9 +36,10 @@ export type FinanceEntry = {
 
 export type FinanceDuePayment = {
   id: string;
-  accountId: string;
+  accountId: string | null;
   description: string;
   amountMinor: number;
+  currency: string;
   dueDate: string;
   category: string;
   status: FinanceDuePaymentStatus;
@@ -61,7 +62,7 @@ export type FinanceEntryDraft = Pick<
 
 export type FinanceDuePaymentDraft = Pick<
   FinanceDuePayment,
-  "accountId" | "description" | "amountMinor" | "dueDate"
+  "accountId" | "description" | "amountMinor" | "currency" | "dueDate"
 > & {
   category?: string;
 };
@@ -159,11 +160,16 @@ export function isValidFinanceEntryDraft(
 
 export function isValidFinanceDuePaymentDraft(
   draft: FinanceDuePaymentDraft,
-  accountIds?: Set<string>,
+  accountCurrencies?: Map<string, string>,
 ): boolean {
+  const accountCurrency = draft.accountId
+    ? accountCurrencies?.get(draft.accountId)
+    : null;
+
   return (
-    Boolean(draft.accountId) &&
-    (!accountIds || accountIds.has(draft.accountId)) &&
+    (!draft.accountId || !accountCurrencies || Boolean(accountCurrency)) &&
+    isCurrencyCode(draft.currency) &&
+    (!accountCurrency || accountCurrency === draft.currency) &&
     Boolean(draft.description.trim()) &&
     Number.isSafeInteger(draft.amountMinor) &&
     draft.amountMinor > 0 &&
@@ -260,16 +266,18 @@ export function patchFinanceEntry(
 
 export function createFinanceDuePayment(
   draft: FinanceDuePaymentDraft,
-  accountIds: Set<string>,
+  accountCurrencies: Map<string, string>,
   now = new Date(),
 ): FinanceDuePayment | null {
   const normalized = {
     ...draft,
+    accountId: draft.accountId || null,
     description: draft.description.trim(),
+    currency: draft.currency.trim().toUpperCase(),
     category: draft.category?.trim() ?? "",
   };
 
-  if (!isValidFinanceDuePaymentDraft(normalized, accountIds)) {
+  if (!isValidFinanceDuePaymentDraft(normalized, accountCurrencies)) {
     return null;
   }
 
@@ -287,18 +295,20 @@ export function createFinanceDuePayment(
 export function patchFinanceDuePayment(
   payment: FinanceDuePayment,
   patch: Partial<FinanceDuePaymentDraft>,
-  accountIds: Set<string>,
+  accountCurrencies: Map<string, string>,
   now = new Date(),
 ): FinanceDuePayment | null {
   const updated: FinanceDuePayment = {
     ...payment,
     ...patch,
+    accountId: patch.accountId === undefined ? payment.accountId : patch.accountId || null,
     description: patch.description?.trim() ?? payment.description,
+    currency: patch.currency?.trim().toUpperCase() ?? payment.currency,
     category: patch.category === undefined ? payment.category : patch.category.trim(),
     updatedAt: now.toISOString(),
   };
 
-  return isValidFinanceDuePaymentDraft(updated, accountIds) ? updated : null;
+  return isValidFinanceDuePaymentDraft(updated, accountCurrencies) ? updated : null;
 }
 
 export function setFinanceDuePaymentStatus(
@@ -410,7 +420,9 @@ export function removeFinanceAccount(
   return {
     accounts: accounts.filter((account) => account.id !== accountId),
     entries: entries.filter((entry) => entry.accountId !== accountId),
-    duePayments: duePayments.filter((payment) => payment.accountId !== accountId),
+    duePayments: duePayments.map((payment) =>
+      payment.accountId === accountId ? { ...payment, accountId: null } : payment,
+    ),
   };
 }
 

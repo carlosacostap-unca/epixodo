@@ -48,6 +48,7 @@ const request = async (path, options = {}) => {
 const timestamp = "2026-07-26T12:00:00.000Z";
 const workspace = {
   subjects: [{ id: "subject-1", name: "Trabajo", parentSubjectId: null, horizon: "short", createdAt: timestamp, updatedAt: timestamp }],
+  deliverables: [{ id: "deliverable-1", subjectId: "subject-1", name: "Informe final", description: "Documento revisado y listo para entregar.", createdAt: timestamp, updatedAt: timestamp }],
   phases: [{ id: "phase-1", subjectId: "subject-1", name: "Inicio", plannedStart: "2026-07-26", executedStart: null, plannedEnd: null, executedEnd: null, order: 0, createdAt: timestamp, updatedAt: timestamp }],
   subjectEvents: [{ id: "event-1", subjectId: "subject-1", phaseId: "phase-1", kind: "deadline", description: "Entrega", date: "2026-07-31", createdAt: timestamp, updatedAt: timestamp }],
   tasks: [{
@@ -57,6 +58,7 @@ const workspace = {
     status: "pending",
     subjectIds: ["subject-1"],
     phaseId: "phase-1",
+    deliverableId: "deliverable-1",
     parentTaskId: null,
     hacerEl: "2026-07-26",
     venceEl: "2026-07-31",
@@ -79,7 +81,7 @@ const workspace = {
   expectations: [{ id: "expectation-1", title: "Llegan dos compras de Mercado Libre", notes: "Revisar la entrega.", expectedDate: "2026-07-28", quantity: 2, source: "Mercado Libre", status: "pending", resolvedAt: null, createdAt: timestamp, updatedAt: timestamp }],
   financeAccounts: [{ id: "account-1", name: "Banco", type: "bank", currency: "ARS", openingBalanceMinor: 10000, createdAt: timestamp, updatedAt: timestamp }],
   financeEntries: [{ id: "entry-1", accountId: "account-1", kind: "expense", date: "2026-07-26", description: "Compra", amountMinor: 1500, category: "Casa", createdAt: timestamp, updatedAt: timestamp }],
-  financeDuePayments: [{ id: "due-1", accountId: "account-1", description: "Internet", amountMinor: 2000, dueDate: "2026-07-30", category: "Servicios", status: "pending", paidAt: null, createdAt: timestamp, updatedAt: timestamp }],
+  financeDuePayments: [{ id: "due-1", accountId: null, description: "Internet", amountMinor: 2000, currency: "ARS", dueDate: "2026-07-30", category: "Servicios", status: "pending", paidAt: null, createdAt: timestamp, updatedAt: timestamp }],
   nutritionProfile: { energyGoalKcalMilli: null, proteinGoalGramsMilli: 100000, carbsGoalGramsMilli: null, fatGoalGramsMilli: null, fiberGoalGramsMilli: null, waterGoalMl: 2000, preferences: ["simple"], allergies: [], intolerances: [], updatedAt: timestamp },
   nutritionFoods: [{ id: "food-1", name: "Manzana", referenceQuantityMilli: 100000, unit: "g", energyKcalMilli: 52000, proteinGramsMilli: 300, carbsGramsMilli: 14000, fatGramsMilli: 200, fiberGramsMilli: 2400, createdAt: timestamp, updatedAt: timestamp }],
   nutritionRecipes: [{ id: "recipe-1", name: "Ensalada", servingsMilli: 1000, ingredients: [{ id: "ingredient-1", foodId: "food-1", quantityMilli: 100000 }], createdAt: timestamp, updatedAt: timestamp }],
@@ -98,6 +100,8 @@ assert.equal(loaded.tasks[0].aiSuggestion.amountMinor, 310000, "AI expense sugge
 assert.equal(loaded.expectations[0].status, "pending", "expectations must survive without becoming tasks");
 assert.equal(loaded.tasks.some((item) => item.id === "expectation-1"), false, "expectations must not leak into task views");
 assert.equal(loaded.phases[0].order, 0, "zero-based phase order must survive");
+assert.equal(loaded.tasks[0].deliverableId, "deliverable-1", "task deliverable relation must survive");
+assert.equal(loaded.deliverables[0].description, "Documento revisado y listo para entregar.");
 assert.equal(loaded.nutritionProfile.energyGoalKcalMilli, null, "nullable goals must survive");
 
 const countsAfterFirstSave = Object.fromEntries([...db].map(([name, records]) => [name, records.length]));

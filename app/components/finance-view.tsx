@@ -239,7 +239,8 @@ function DuePaymentForm({
   onSave: (draft: FinanceDuePaymentDraft) => void;
   onClose: () => void;
 }) {
-  const [accountId, setAccountId] = useState(payment?.accountId ?? accounts[0]?.id ?? "");
+  const [accountId, setAccountId] = useState(payment?.accountId ?? "");
+  const [currency, setCurrency] = useState(payment?.currency ?? "ARS");
   const [description, setDescription] = useState(payment?.description ?? "");
   const [amount, setAmount] = useState(payment ? minorAmountToInput(payment.amountMinor) : "");
   const [dueDate, setDueDate] = useState(payment?.dueDate ?? today);
@@ -249,11 +250,8 @@ function DuePaymentForm({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amountMinor = parseMinorAmount(amount);
+    const normalizedCurrency = currency.trim().toUpperCase();
 
-    if (!accountId) {
-      setError("Elegí la cuenta desde la que pensás pagar.");
-      return;
-    }
     if (!description.trim()) {
       setError("Escribí qué pago tenés que realizar.");
       return;
@@ -266,11 +264,16 @@ function DuePaymentForm({
       setError("El importe debe ser mayor que cero y tener hasta dos decimales.");
       return;
     }
+    if (!/^[A-Z]{3}$/.test(normalizedCurrency)) {
+      setError("La moneda debe tener tres letras, por ejemplo ARS o USD.");
+      return;
+    }
 
     onSave({
-      accountId,
+      accountId: accountId || null,
       description: description.trim(),
       amountMinor,
+      currency: normalizedCurrency,
       dueDate,
       category: category.trim(),
     });
@@ -279,13 +282,28 @@ function DuePaymentForm({
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4 p-5">
-      <FinanceField label="Cuenta" hint="El pago pendiente no modifica el saldo hasta que registres el egreso.">
-        <select value={accountId} onChange={(event) => setAccountId(event.target.value)} className={financeControlClass}>
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px]">
+        <FinanceField label="Cuenta" hint="Opcional: podés decidir desde dónde pagar más adelante.">
+          <select
+            value={accountId}
+            onChange={(event) => {
+              const nextAccountId = event.target.value;
+              setAccountId(nextAccountId);
+              const account = accounts.find((item) => item.id === nextAccountId);
+              if (account) setCurrency(account.currency);
+            }}
+            className={financeControlClass}
+          >
+            <option value="">Sin cuenta definida</option>
           {accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}
-        </select>
-      </FinanceField>
+          </select>
+        </FinanceField>
+        <FinanceField label="Moneda" hint={accountId ? "Definida por la cuenta." : "Código de tres letras."}>
+          <input value={currency} disabled={Boolean(accountId)} maxLength={3} onChange={(event) => setCurrency(event.target.value.toUpperCase())} className={`${financeControlClass} font-mono uppercase`} />
+        </FinanceField>
+      </div>
       <FinanceField label="Descripción">
-        <input autoFocus value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Alquiler, tarjeta, servicio…" className={financeControlClass} />
+        <input autoFocus value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Obra social, impuesto, servicio, tarjeta…" className={financeControlClass} />
       </FinanceField>
       <div className="grid gap-4 sm:grid-cols-2">
         <FinanceField label="Importe" hint="Siempre mayor que cero.">
@@ -340,8 +358,8 @@ export default function FinanceView({
   });
   const visibleDuePayments = workspace.orderedFinanceDuePayments.filter((payment) => {
     if (!normalizedQuery) return true;
-    const account = accountById.get(payment.accountId);
-    return `${payment.description} ${payment.category} ${account?.name ?? ""} ${payment.status}`
+    const account = payment.accountId ? accountById.get(payment.accountId) : null;
+    return `${payment.description} ${payment.category} ${payment.currency} ${account?.name ?? "sin cuenta"} ${payment.status}`
       .toLocaleLowerCase("es")
       .includes(normalizedQuery);
   });
@@ -352,7 +370,7 @@ export default function FinanceView({
   function confirmAccountDelete(account: FinanceAccount) {
     const entryCount = workspace.financeEntries.filter((entry) => entry.accountId === account.id).length;
     const paymentCount = workspace.financeDuePayments.filter((payment) => payment.accountId === account.id).length;
-    if (window.confirm(`Eliminar “${account.name}” también eliminará ${entryCount} ${entryCount === 1 ? "movimiento" : "movimientos"} y ${paymentCount} ${paymentCount === 1 ? "pago programado" : "pagos programados"}. Esta acción no se puede deshacer.`)) {
+    if (window.confirm(`Eliminar “${account.name}” también eliminará ${entryCount} ${entryCount === 1 ? "movimiento" : "movimientos"}. ${paymentCount} ${paymentCount === 1 ? "pago programado quedará" : "pagos programados quedarán"} sin cuenta asociada. Esta acción no se puede deshacer.`)) {
       workspace.deleteFinanceAccount(account.id);
       setAccountModalId(null);
     }
@@ -379,7 +397,7 @@ export default function FinanceView({
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setAccountModalId("new")} className="rounded-xl border border-[#3b5678] px-4 py-2.5 text-sm font-bold text-[#c4d0e1] transition hover:bg-[#182a42]">+ Cuenta</button>
-          <button type="button" disabled={workspace.financeAccounts.length === 0} onClick={() => setDuePaymentModalId("new")} className="rounded-xl border border-[#7d6330] bg-[#2c2415] px-4 py-2.5 text-sm font-black text-[#f4c36a] transition hover:-translate-y-0.5 hover:bg-[#3a2e19] disabled:cursor-not-allowed disabled:opacity-40">+ Pago pendiente</button>
+          <button type="button" onClick={() => setDuePaymentModalId("new")} className="rounded-xl border border-[#7d6330] bg-[#2c2415] px-4 py-2.5 text-sm font-black text-[#f4c36a] transition hover:-translate-y-0.5 hover:bg-[#3a2e19]">+ Pago pendiente</button>
           <button type="button" disabled={workspace.financeAccounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "expense" })} className="rounded-xl border border-[#ff927d] bg-[#ff927d] px-4 py-2.5 text-sm font-black text-[#28100d] transition hover:-translate-y-0.5 hover:bg-[#ffb09f]">− Egreso</button>
           <button type="button" disabled={workspace.financeAccounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "income" })} className="rounded-xl border border-[#63d3a5] bg-[#63d3a5] px-4 py-2.5 text-sm font-black text-[#071b14] transition hover:-translate-y-0.5 hover:bg-[#8ce3bf]">+ Ingreso</button>
         </div>
@@ -406,8 +424,7 @@ export default function FinanceView({
         <div className="grid min-h-52 place-items-center rounded-2xl border border-dashed border-[#344b69] bg-[#0d1725]/75 px-6 py-10 text-center"><div className="max-w-sm"><span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-[#365079] bg-[#132642] font-mono text-[#82afff]">$</span><h3 className="mt-4 text-base font-black text-[#dce6f5]">Tu primer saldo empieza con una cuenta</h3><p className="mt-2 text-sm leading-6 text-[#7f91ad]">Creá efectivo, banco o billetera y después registrá ingresos y egresos.</p><button type="button" onClick={() => setAccountModalId("new")} className="mt-5 rounded-xl bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f]">Crear primera cuenta</button></div></div>
       )}
 
-      {workspace.financeAccounts.length > 0 ? (
-        <section aria-labelledby="finance-due-payments-title" className="overflow-hidden rounded-2xl border border-[#554a32] bg-[linear-gradient(145deg,#151b24,#171a20)]">
+      <section aria-labelledby="finance-due-payments-title" className="overflow-hidden rounded-2xl border border-[#554a32] bg-[linear-gradient(145deg,#151b24,#171a20)]">
           <div className="grid gap-3 border-b border-[#3b382f] px-4 py-4 sm:flex sm:items-end sm:justify-between sm:px-5">
             <div>
               <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#b99551]">Agenda de vencimientos</p>
@@ -422,8 +439,7 @@ export default function FinanceView({
           {visibleDuePayments.length > 0 ? (
             <div className="divide-y divide-[#34342f]">
               {visibleDuePayments.map((payment) => {
-                const account = accountById.get(payment.accountId);
-                if (!account) return null;
+                const account = payment.accountId ? accountById.get(payment.accountId) : null;
                 const urgency = getFinanceDuePaymentUrgency(payment, workspace.today);
                 const urgencyStyle = urgency === "overdue"
                   ? "border-[#864a3e] bg-[#331b18] text-[#ff9d88]"
@@ -448,9 +464,9 @@ export default function FinanceView({
                         {payment.category ? <span className="text-xs font-semibold text-[#8f887a]">{payment.category}</span> : null}
                       </div>
                       <p className={`mt-2 truncate text-sm font-black text-[#f1eadc] ${urgency === "paid" ? "line-through" : ""}`}>{payment.description}</p>
-                      <p className="mt-1 truncate text-xs text-[#8f887a]">{account.name} · {payment.dueDate.split("-").reverse().join("/")}</p>
+                      <p className="mt-1 truncate text-xs text-[#8f887a]">{account?.name ?? "Sin cuenta definida"} · {payment.dueDate.split("-").reverse().join("/")}</p>
                     </div>
-                    <p className={`font-mono text-base font-black ${urgency === "overdue" ? "text-[#ff9d88]" : "text-[#f3ead8]"}`}>{formatMoney(payment.amountMinor, account.currency)}</p>
+                    <p className={`font-mono text-base font-black ${urgency === "overdue" ? "text-[#ff9d88]" : "text-[#f3ead8]"}`}>{formatMoney(payment.amountMinor, payment.currency)}</p>
                     <div className="flex flex-wrap gap-1 sm:justify-end">
                       <button type="button" onClick={() => workspace.setFinanceDuePaymentState(payment.id, payment.status === "paid" ? "pending" : "paid")} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black transition ${payment.status === "paid" ? "border-[#4b5c71] text-[#b8c5d9] hover:bg-[#192b43]" : "border-[#366c58] text-[#75dcb1] hover:bg-[#142c25]"}`}>{payment.status === "paid" ? "Volver a pendiente" : "Marcar pagado"}</button>
                       <button type="button" onClick={() => setDuePaymentModalId(payment.id)} className="rounded-lg border border-[#4b4b46] px-2.5 py-1.5 text-xs font-bold text-[#c1b8a8] transition hover:bg-[#292923]">Editar</button>
@@ -466,8 +482,7 @@ export default function FinanceView({
               {!normalizedQuery ? <button type="button" onClick={() => setDuePaymentModalId("new")} className="mt-4 rounded-xl border border-[#7d6330] bg-[#2c2415] px-4 py-2.5 text-sm font-black text-[#f4c36a] transition hover:bg-[#3a2e19]">Anotar un pago</button> : null}
             </div>
           )}
-        </section>
-      ) : null}
+      </section>
 
       {workspace.financeAccounts.length > 0 ? (
         <section aria-labelledby="finance-accounts-title">

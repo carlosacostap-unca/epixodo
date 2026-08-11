@@ -9,6 +9,7 @@ import {
 } from "../lib/task-storage";
 import {
   createSubject,
+  createSubjectDeliverable,
   createExpectation,
   createSubjectEvent,
   createSubjectPhase,
@@ -17,6 +18,7 @@ import {
   getCompletedTasks,
   getInboxTasks,
   isValidSubjectEventDraft,
+  isValidSubjectDeliverableDraft,
   getPhaseDateRangeError,
   getSubjectDescendantIds,
   getSubjectTasks,
@@ -27,12 +29,15 @@ import {
   getUpcomingTasks,
   getWaitingTasks,
   normalizeTaskDraft,
+  normalizeTaskDeliverableAssignment,
   normalizeTaskPhaseAssignment,
   patchSubjectEvent,
+  patchSubjectDeliverable,
   reorderSubjectPhases,
   patchExpectation,
   removePhaseFromWorkspace,
   removeSubjectEventFromWorkspace,
+  removeSubjectDeliverableFromWorkspace,
   removeSubjectFromWorkspace,
   sortedSubjectPhases,
   sortedExpectations,
@@ -40,6 +45,8 @@ import {
   uniqueIds,
   updateTaskStatus,
   type Subject,
+  type SubjectDeliverable,
+  type SubjectDeliverableDraft,
   type ExpectationDraft,
   type ExpectationStatus,
   type SubjectEvent,
@@ -113,6 +120,7 @@ type TaskPatch = Partial<
     | "notes"
     | "subjectIds"
     | "phaseId"
+    | "deliverableId"
     | "parentTaskId"
     | "hacerEl"
     | "venceEl"
@@ -149,6 +157,7 @@ export function useTaskWorkspace() {
         localWorkspace.tasks.length > 0 ||
         localWorkspace.expectations.length > 0 ||
         localWorkspace.subjects.length > 0 ||
+        localWorkspace.deliverables.length > 0 ||
         localWorkspace.phases.length > 0 ||
         localWorkspace.subjectEvents.length > 0 ||
         localWorkspace.financeAccounts.length > 0 ||
@@ -172,6 +181,7 @@ export function useTaskWorkspace() {
           remoteWorkspace.tasks.length > 0 ||
           remoteWorkspace.expectations.length > 0 ||
           remoteWorkspace.subjects.length > 0 ||
+          remoteWorkspace.deliverables.length > 0 ||
           remoteWorkspace.phases.length > 0 ||
           remoteWorkspace.subjectEvents.length > 0 ||
           remoteWorkspace.financeAccounts.length > 0 ||
@@ -189,6 +199,7 @@ export function useTaskWorkspace() {
           localWorkspace.tasks.length > 0 ||
           localWorkspace.expectations.length > 0 ||
           localWorkspace.subjects.length > 0 ||
+          localWorkspace.deliverables.length > 0 ||
           localWorkspace.phases.length > 0 ||
           localWorkspace.subjectEvents.length > 0 ||
           localWorkspace.financeAccounts.length > 0 ||
@@ -355,10 +366,18 @@ export function useTaskWorkspace() {
         draft.subjectIds,
         draft.phaseId,
       );
+      const deliverableId = normalizeTaskDeliverableAssignment(
+        current.deliverables,
+        assignment.subjectIds,
+        draft.deliverableId,
+      );
 
       return {
         ...current,
-        tasks: [normalizeTaskDraft({ ...draft, ...assignment }), ...current.tasks],
+        tasks: [
+          normalizeTaskDraft({ ...draft, ...assignment, deliverableId }),
+          ...current.tasks,
+        ],
       };
     });
   }
@@ -395,6 +414,13 @@ export function useTaskWorkspace() {
                 phaseId:
                   phase && requestedSubjectIds.includes(phase.subjectId) ? phase.id : null,
               };
+        const requestedDeliverableId =
+          "deliverableId" in patch ? patch.deliverableId || null : task.deliverableId;
+        const deliverableId = normalizeTaskDeliverableAssignment(
+          current.deliverables,
+          assignment.subjectIds,
+          requestedDeliverableId,
+        );
         const updated = {
           ...task,
           ...patch,
@@ -402,6 +428,7 @@ export function useTaskWorkspace() {
           notes: patch.notes ?? task.notes,
           subjectIds: assignment.subjectIds,
           phaseId: assignment.phaseId,
+          deliverableId,
           parentTaskId: safeParentTaskId,
           hacerEl: "hacerEl" in patch ? patch.hacerEl || null : task.hacerEl,
           venceEl: "venceEl" in patch ? patch.venceEl || null : task.venceEl,
@@ -504,6 +531,46 @@ export function useTaskWorkspace() {
 
   function deleteSubject(subjectId: string) {
     setWorkspace((current) => removeSubjectFromWorkspace(current, subjectId));
+  }
+
+  function addDeliverable(subjectId: string, draft: SubjectDeliverableDraft) {
+    if (!isValidSubjectDeliverableDraft(draft)) return;
+
+    setWorkspace((current) =>
+      current.subjects.some((subject) => subject.id === subjectId)
+        ? {
+            ...current,
+            deliverables: [
+              ...current.deliverables,
+              createSubjectDeliverable(subjectId, draft),
+            ],
+          }
+        : current,
+    );
+  }
+
+  function updateDeliverable(
+    deliverableId: string,
+    patch: Partial<SubjectDeliverableDraft>,
+  ) {
+    setWorkspace((current) => {
+      const deliverable = current.deliverables.find((item) => item.id === deliverableId);
+      const updated = deliverable ? patchSubjectDeliverable(deliverable, patch) : null;
+      return updated
+        ? {
+            ...current,
+            deliverables: current.deliverables.map((item) =>
+              item.id === deliverableId ? updated : item,
+            ),
+          }
+        : current;
+    });
+  }
+
+  function deleteDeliverable(deliverableId: string) {
+    setWorkspace((current) =>
+      removeSubjectDeliverableFromWorkspace(current, deliverableId),
+    );
   }
 
   function addPhase(subjectId: string, draft: SubjectPhaseDraft) {
@@ -771,7 +838,7 @@ export function useTaskWorkspace() {
     setWorkspace((current) => {
       const payment = createFinanceDuePayment(
         draft,
-        new Set(current.financeAccounts.map((account) => account.id)),
+        new Map(current.financeAccounts.map((account) => [account.id, account.currency])),
       );
       return payment
         ? { ...current, financeDuePayments: [...current.financeDuePayments, payment] }
@@ -789,7 +856,7 @@ export function useTaskWorkspace() {
       const updated = patchFinanceDuePayment(
         payment,
         patch,
-        new Set(current.financeAccounts.map((account) => account.id)),
+        new Map(current.financeAccounts.map((account) => [account.id, account.currency])),
       );
       return updated
         ? {
@@ -1072,6 +1139,9 @@ export function useTaskWorkspace() {
     setSubjectHorizon,
     setSubjectParent,
     deleteSubject,
+    addDeliverable,
+    updateDeliverable,
+    deleteDeliverable,
     addPhase,
     patchPhase,
     movePhase,
@@ -1123,4 +1193,4 @@ export function useTaskWorkspace() {
 }
 
 export type TaskWorkspace = ReturnType<typeof useTaskWorkspace>;
-export type { Subject, SubjectEvent, SubjectPhase, Task };
+export type { Subject, SubjectDeliverable, SubjectEvent, SubjectPhase, Task };

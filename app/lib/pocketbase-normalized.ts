@@ -14,6 +14,7 @@ type RecordList = { page: number; totalPages: number; items: RecordData[] };
 
 const collections = {
   subjects: "subjects",
+  deliverables: "subject_deliverables",
   phases: "subject_phases",
   tasks: "tasks",
   taskSubjects: "task_subjects",
@@ -236,6 +237,14 @@ export async function getNormalizedWorkspace(
       createdAt: clientCreatedAt(record),
       updatedAt: clientUpdatedAt(record),
     })),
+    deliverables: data.deliverables.map((record) => ({
+      id: record.client_id,
+      subjectId: clientIdByRecordId.get(relation(record, "subject")) ?? "",
+      name: text(record, "name"),
+      description: text(record, "description"),
+      createdAt: clientCreatedAt(record),
+      updatedAt: clientUpdatedAt(record),
+    })),
     phases: data.phases.map((record) => ({
       id: record.client_id,
       subjectId: clientIdByRecordId.get(relation(record, "subject")) ?? "",
@@ -267,6 +276,7 @@ export async function getNormalizedWorkspace(
       status: text(record, "status") as WorkspaceData["tasks"][number]["status"],
       subjectIds: (taskSubjects.get(record.id) ?? []).sort(),
       phaseId: clientIdByRecordId.get(relation(record, "phase")) ?? null,
+      deliverableId: clientIdByRecordId.get(relation(record, "deliverable")) ?? null,
       parentTaskId: clientIdByRecordId.get(relation(record, "parent")) ?? null,
       hacerEl: optionalText(record, "do_on"),
       venceEl: optionalText(record, "due_on"),
@@ -302,9 +312,10 @@ export async function getNormalizedWorkspace(
     })),
     financeDuePayments: data.financeDuePayments.map((record) => ({
       id: record.client_id,
-      accountId: clientIdByRecordId.get(relation(record, "account")) ?? "",
+      accountId: clientIdByRecordId.get(relation(record, "account")) ?? null,
       description: text(record, "description"),
       amountMinor: integer(record, "amount_minor"),
+      currency: text(record, "currency"),
       dueDate: text(record, "due_date"),
       category: text(record, "category"),
       status: text(record, "payment_status") as WorkspaceData["financeDuePayments"][number]["status"],
@@ -513,6 +524,21 @@ export async function saveNormalizedWorkspace(
   );
   subjects = recordMap(result.records);
 
+  result = await upsertRows(
+    request,
+    collections.deliverables,
+    ownerId,
+    workspace.deliverables.map((deliverable) => ({
+      client_id: deliverable.id,
+      subject: requireRelation(subjects, deliverable.subjectId),
+      name: deliverable.name,
+      description: deliverable.description,
+      ...stamps(deliverable),
+    })),
+  );
+  remember(collections.deliverables, result.stale);
+  const deliverables = recordMap(result.records);
+
   result = await upsertRows(request, collections.phases, ownerId, workspace.phases.map((phase) => ({
     client_id: phase.id,
     subject: requireRelation(subjects, phase.subjectId),
@@ -529,7 +555,7 @@ export async function saveNormalizedWorkspace(
 
   const expectationRows = workspace.expectations.map((expectation) => ({
     client_id: expectation.id, title: expectation.title, notes: encodeExpectationNotes(expectation),
-    status: expectation.status === "pending" ? "waiting" : "completed", phase: "", parent: "",
+    status: expectation.status === "pending" ? "waiting" : "completed", phase: "", deliverable: "", parent: "",
     do_on: "", due_on: "", priority: "normal", completed_at: expectation.resolvedAt ?? "", ...stamps(expectation),
   }));
   result = await upsertRows(request, collections.tasks, ownerId, [...workspace.tasks.map((task) => ({
@@ -538,6 +564,9 @@ export async function saveNormalizedWorkspace(
     notes: encodeTaskNotes(task.notes, task.aiSuggestion),
     status: task.status,
     phase: task.phaseId ? requireRelation(phases, task.phaseId) : "",
+    deliverable: task.deliverableId
+      ? requireRelation(deliverables, task.deliverableId)
+      : "",
     do_on: task.hacerEl ?? "",
     due_on: task.venceEl ?? "",
     priority: task.priority,
@@ -552,6 +581,9 @@ export async function saveNormalizedWorkspace(
     notes: encodeTaskNotes(task.notes, task.aiSuggestion),
     status: task.status,
     phase: task.phaseId ? requireRelation(phases, task.phaseId) : "",
+    deliverable: task.deliverableId
+      ? requireRelation(deliverables, task.deliverableId)
+      : "",
     parent: task.parentTaskId ? requireRelation(tasks, task.parentTaskId) : "",
     do_on: task.hacerEl ?? "",
     due_on: task.venceEl ?? "",
@@ -607,9 +639,10 @@ export async function saveNormalizedWorkspace(
 
   result = await upsertRows(request, collections.financeDuePayments, ownerId, workspace.financeDuePayments.map((payment) => ({
     client_id: payment.id,
-    account: requireRelation(accounts, payment.accountId),
+    account: payment.accountId ? requireRelation(accounts, payment.accountId) : "",
     description: payment.description,
     amount_minor: payment.amountMinor,
+    currency: payment.currency,
     due_date: payment.dueDate,
     category: payment.category,
     payment_status: payment.status,
@@ -758,6 +791,7 @@ async function verifyDesiredIdentities(
 ) {
   const expectations: [string, string[]][] = [
     [collections.subjects, workspace.subjects.map((item) => item.id)],
+    [collections.deliverables, workspace.deliverables.map((item) => item.id)],
     [collections.phases, workspace.phases.map((item) => item.id)],
     [collections.tasks, [...workspace.tasks.map((item) => item.id), ...workspace.expectations.map((item) => item.id)]],
     [collections.taskSubjects, workspace.tasks.flatMap((task) => task.subjectIds.map((subjectId) => `${task.id}::${subjectId}`))],
@@ -793,6 +827,7 @@ async function deleteStaleRecords(
     collections.events,
     collections.tasks,
     collections.phases,
+    collections.deliverables,
     collections.subjects,
     collections.locations,
   ];
@@ -810,6 +845,7 @@ function workspaceSignature(workspace: WorkspaceData) {
   const normalized = {
     ...workspace,
     subjects: [...workspace.subjects].sort(byId),
+    deliverables: [...workspace.deliverables].sort(byId),
     phases: [...workspace.phases].sort(byId),
     subjectEvents: [...workspace.subjectEvents].sort(byId),
     tasks: workspace.tasks.map((task) => ({

@@ -1,6 +1,7 @@
 "use client";
 
 import { type DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTaskWorkspace } from "../hooks/use-task-workspace";
 import FinanceView from "./finance-view";
 import NutritionView from "./nutrition-view";
@@ -18,16 +19,21 @@ import {
   getHorizonLabel,
   getSubjectDescendantIds,
   getSubjectPath,
+  getTaskAvailableDeliverables,
   getTaskAvailablePhases,
   isActiveTask,
   isValidSubjectEventDraft,
+  isValidSubjectDeliverableDraft,
   subjectHorizons,
   sortedSubjectPhases,
   sortedSubjectEvents,
+  sortedSubjectDeliverables,
   taskPriorities,
   taskStatuses,
   taskTreeItems,
   type Subject,
+  type SubjectDeliverable,
+  type SubjectDeliverableDraft,
   type SubjectEvent,
   type SubjectEventDraft,
   type SubjectEventKind,
@@ -62,6 +68,7 @@ type EditableTaskPatch = Partial<
     | "notes"
     | "subjectIds"
     | "phaseId"
+    | "deliverableId"
     | "parentTaskId"
     | "hacerEl"
     | "venceEl"
@@ -463,6 +470,7 @@ function TaskRow({
 function TaskEditModal({
   task,
   subjects,
+  deliverables,
   phases,
   today,
   onPatch,
@@ -474,6 +482,7 @@ function TaskEditModal({
 }: {
   task: Task | null;
   subjects: Subject[];
+  deliverables: SubjectDeliverable[];
   phases: SubjectPhase[];
   today: string;
   onPatch: (taskId: string, patch: EditableTaskPatch) => void;
@@ -498,7 +507,13 @@ function TaskEditModal({
   const parentOptions = getAvailableParentTasksForTask(task.id);
   const parentTask = parentOptions.find((option) => option.id === task.parentTaskId);
   const availablePhases = getTaskAvailablePhases(phases, task.subjectIds);
+  const availableDeliverables = getTaskAvailableDeliverables(
+    deliverables,
+    task.subjectIds,
+  );
   const selectedPhase = phases.find((phase) => phase.id === task.phaseId) ?? null;
+  const selectedDeliverable =
+    deliverables.find((deliverable) => deliverable.id === task.deliverableId) ?? null;
 
   function handleClose() {
     setIsEditing(false);
@@ -661,6 +676,23 @@ function TaskEditModal({
                   </select>
                 </FieldLabel>
 
+                <FieldLabel label="Entregable">
+                  <select
+                    value={task.deliverableId ?? ""}
+                    onChange={(event) =>
+                      onPatch(task.id, { deliverableId: event.target.value || null })
+                    }
+                    className={controlClass}
+                  >
+                    <option value="">Sin entregable</option>
+                    {availableDeliverables.map((deliverable) => (
+                      <option key={deliverable.id} value={deliverable.id}>
+                        {getSubjectPath(subjects, deliverable.subjectId)} · {deliverable.name}
+                      </option>
+                    ))}
+                  </select>
+                </FieldLabel>
+
                 <FieldLabel label="Asuntos">
                   <div className="grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3">
                     <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
@@ -681,6 +713,17 @@ function TaskEditModal({
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
                     {getStatusLabel(task.status)}
                   </p>
+                </div>
+                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Entregable</p>
+                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
+                    {selectedDeliverable?.name ?? "Sin entregable"}
+                  </p>
+                  {selectedDeliverable ? (
+                    <p className="mt-1 text-xs text-[#91a0bb]">
+                      {getSubjectPath(subjects, selectedDeliverable.subjectId)}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Depende de</p>
@@ -902,22 +945,29 @@ function TaskSubjectPickerModal({
 function TaskCreateModal({
   isOpen,
   subjects,
+  deliverables,
   phases,
   tasks,
   onAddTask,
   onClose,
   defaultSubjectIds = [],
+  defaultDeliverableId = null,
 }: {
   isOpen: boolean;
   subjects: Subject[];
+  deliverables: SubjectDeliverable[];
   phases: SubjectPhase[];
   tasks: Task[];
   onAddTask: (draft: TaskDraft) => void;
   onClose: () => void;
   defaultSubjectIds?: string[];
+  defaultDeliverableId?: string | null;
 }) {
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(defaultSubjectIds);
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
+  const [selectedDeliverableId, setSelectedDeliverableId] = useState<string | null>(
+    defaultDeliverableId,
+  );
   const [isSubjectPickerOpen, setIsSubjectPickerOpen] = useState(false);
 
   if (!isOpen) {
@@ -927,6 +977,7 @@ function TaskCreateModal({
   function handleClose() {
     setSelectedSubjectIds(defaultSubjectIds);
     setSelectedPhaseId(null);
+    setSelectedDeliverableId(defaultDeliverableId);
     onClose();
   }
 
@@ -950,6 +1001,7 @@ function TaskCreateModal({
       notes,
       subjectIds: selectedSubjectIds,
       phaseId: selectedPhaseId,
+      deliverableId: selectedDeliverableId,
       parentTaskId: parentTaskId || null,
       hacerEl: hacerEl || null,
       venceEl: venceEl || null,
@@ -1066,6 +1118,24 @@ function TaskCreateModal({
               </select>
             </FieldLabel>
 
+            <FieldLabel label="Entregable">
+              <select
+                value={selectedDeliverableId ?? ""}
+                onChange={(event) => setSelectedDeliverableId(event.target.value || null)}
+                aria-label="Entregable de la tarea"
+                className={controlClass}
+              >
+                <option value="">Sin entregable</option>
+                {getTaskAvailableDeliverables(deliverables, selectedSubjectIds).map(
+                  (deliverable) => (
+                    <option key={deliverable.id} value={deliverable.id}>
+                      {getSubjectPath(subjects, deliverable.subjectId)} · {deliverable.name}
+                    </option>
+                  ),
+                )}
+              </select>
+            </FieldLabel>
+
             <FieldLabel label="Asuntos">
               <div className="grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3">
                 <SubjectChips subjects={subjects} subjectIds={selectedSubjectIds} />
@@ -1107,6 +1177,12 @@ function TaskCreateModal({
           const selectedPhase = phases.find((phase) => phase.id === selectedPhaseId);
           if (selectedPhase && !subjectIds.includes(selectedPhase.subjectId)) {
             setSelectedPhaseId(null);
+          }
+          const selectedDeliverable = deliverables.find(
+            (deliverable) => deliverable.id === selectedDeliverableId,
+          );
+          if (selectedDeliverable && !subjectIds.includes(selectedDeliverable.subjectId)) {
+            setSelectedDeliverableId(null);
           }
           setIsSubjectPickerOpen(false);
         }}
@@ -2017,6 +2093,150 @@ function PhaseDatePair({
   );
 }
 
+function DeliverableFormModal({
+  isOpen,
+  deliverable,
+  subjectName,
+  onSave,
+  onClose,
+}: {
+  isOpen: boolean;
+  deliverable: SubjectDeliverable | null;
+  subjectName: string;
+  onSave: (draft: SubjectDeliverableDraft) => void;
+  onClose: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+
+  if (!isOpen) return null;
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const draft = {
+      name: String(data.get("name") ?? ""),
+      description: String(data.get("description") ?? ""),
+    };
+    if (!isValidSubjectDeliverableDraft(draft)) {
+      setError("Completa el nombre y la descripción.");
+      return;
+    }
+    onSave(draft);
+    setError(null);
+    onClose();
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[#050812]/75 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="deliverable-form-title">
+      <div className="w-full max-w-xl rounded-xl border border-[#285968] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]">
+        <div className="flex items-center justify-between gap-4 border-b border-[#24444f] px-4 py-4 sm:px-5">
+          <div>
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#67d4e7]">Resultado del asunto</p>
+            <h3 id="deliverable-form-title" className="mt-1 text-xl font-black text-[#eef4ff]">{deliverable ? "Editar entregable" : "Nuevo entregable"}</h3>
+            <p className="mt-1 text-xs text-[#8192ad]">{subjectName}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#67d4e7]/30">×</button>
+        </div>
+        <form onSubmit={handleSubmit} className="grid gap-4 p-4 sm:p-5">
+          <FieldLabel label="Nombre">
+            <input name="name" defaultValue={deliverable?.name ?? ""} placeholder="Ej. Informe final" autoFocus required className={controlClass} />
+          </FieldLabel>
+          <FieldLabel label="Descripción">
+            <textarea name="description" defaultValue={deliverable?.description ?? ""} placeholder="Describe qué debe quedar listo y cómo reconocerlo." rows={4} required className={`${controlClass} h-auto resize-y py-3`} />
+          </FieldLabel>
+          {error ? <p role="alert" className="text-xs font-bold text-[#ff9d88]">{error}</p> : null}
+          <div className="flex justify-end gap-2 border-t border-[#263852] pt-4">
+            <button type="button" onClick={onClose} className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#67d4e7]/30">Cancelar</button>
+            <button type="submit" className="h-10 rounded-md border border-[#67d4e7] bg-[#67d4e7] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#98e7f2] focus:outline-none focus:ring-2 focus:ring-[#67d4e7]/40">{deliverable ? "Guardar entregable" : "Crear entregable"}</button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function SubjectDeliverableSection({
+  subject,
+  deliverables,
+  tasks,
+  onAddDeliverable,
+  onUpdateDeliverable,
+  onDeleteDeliverable,
+  onOpenTask,
+  onCreateTask,
+}: {
+  subject: Subject;
+  deliverables: SubjectDeliverable[];
+  tasks: Task[];
+  onAddDeliverable: (subjectId: string, draft: SubjectDeliverableDraft) => void;
+  onUpdateDeliverable: (id: string, patch: Partial<SubjectDeliverableDraft>) => void;
+  onDeleteDeliverable: (id: string) => void;
+  onOpenTask: (id: string) => void;
+  onCreateTask: (deliverableId: string) => void;
+}) {
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingDeliverable, setEditingDeliverable] = useState<SubjectDeliverable | null>(null);
+  const subjectDeliverables = sortedSubjectDeliverables(deliverables, subject.id);
+
+  function openCreate() {
+    setEditingDeliverable(null);
+    setIsFormOpen(true);
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#285968] bg-[#0e1928]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#24444f] bg-[#10202c] px-4 py-3">
+        <div>
+          <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#67d4e7]">Resultados concretos</p>
+          <h4 className="mt-1 text-base font-black text-[#eef4ff]">Entregables</h4>
+        </div>
+        <button type="button" onClick={openCreate} className="rounded-lg border border-[#347587] bg-[#12303a] px-3 py-2 text-sm font-black text-[#8ae2ef] transition hover:bg-[#173d49] focus:outline-none focus:ring-2 focus:ring-[#67d4e7]/30">Nuevo entregable</button>
+      </div>
+      {subjectDeliverables.length === 0 ? (
+        <div className="m-4 rounded-lg border border-dashed border-[#326070] bg-[#0c1d27] px-5 py-8 text-center">
+          <p className="text-sm font-bold text-[#c6edf2]">Este asunto todavía no tiene entregables.</p>
+          <p className="mt-1 text-xs text-[#7da4ad]">Define el primer resultado que querés producir y luego reúne sus tareas.</p>
+        </div>
+      ) : (
+        <div className="grid gap-3 p-4 lg:grid-cols-2">
+          {subjectDeliverables.map((deliverable) => {
+            const assignedTasks = tasks.filter((task) => task.deliverableId === deliverable.id);
+            const completed = assignedTasks.filter((task) => task.status === "completed").length;
+            const progress = assignedTasks.length ? Math.round((completed / assignedTasks.length) * 100) : 0;
+            return (
+              <article key={deliverable.id} className="relative overflow-hidden rounded-xl border border-[#294756] bg-[#0c1725] p-4 pl-5 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-[#67d4e7]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h5 className="text-base font-black text-[#eef4ff]">{deliverable.name}</h5>
+                    <p className="mt-1 text-sm leading-5 text-[#9eb1c7]">{deliverable.description}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    <button type="button" onClick={() => { setEditingDeliverable(deliverable); setIsFormOpen(true); }} className="rounded-md border border-[#344f61] px-2 py-1.5 text-xs font-bold text-[#b9d4df] hover:bg-[#142a38]">Editar</button>
+                    <button type="button" onClick={() => { if (window.confirm(`Las ${assignedTasks.length} tareas vinculadas se conservarán sin entregable. ¿Borrar “${deliverable.name}”?`)) onDeleteDeliverable(deliverable.id); }} className="rounded-md border border-[#55352f] px-2 py-1.5 text-xs font-bold text-[#ff9d88] hover:bg-[#2e1716]">Borrar</button>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3 text-xs font-bold text-[#8fb2bd]"><span>{completed} de {assignedTasks.length} tareas completadas</span><span className="font-mono text-[#67d4e7]">{progress}%</span></div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#1b3341]"><span className="block h-full rounded-full bg-[#67d4e7] transition-[width]" style={{ width: `${progress}%` }} /></div>
+                <div className="mt-4 grid gap-2">
+                  {assignedTasks.length ? assignedTasks.map((task) => (
+                    <button key={task.id} type="button" onClick={() => onOpenTask(task.id)} className="flex items-center gap-2 rounded-lg border border-[#263d4e] bg-[#101f2e] px-3 py-2 text-left text-sm font-semibold text-[#dce8f5] transition hover:border-[#3d6d7d] hover:bg-[#142838] focus:outline-none focus:ring-2 focus:ring-[#67d4e7]/30">
+                      <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${task.status === "completed" ? "bg-[#63d3a5]" : "bg-[#67d4e7]"}`} />
+                      <span className={`truncate ${task.status === "completed" ? "line-through opacity-60" : ""}`}>{task.title}</span>
+                    </button>
+                  )) : <p className="rounded-lg border border-dashed border-[#315363] px-3 py-3 text-xs text-[#7f9eaa]">Sin tareas todavía. Crea una y quedará vinculada a este entregable.</p>}
+                  <button type="button" onClick={() => onCreateTask(deliverable.id)} className="mt-1 w-fit text-xs font-black text-[#67d4e7] hover:text-[#9cecf5] focus:outline-none focus:underline">+ Añadir tarea</button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+      <DeliverableFormModal key={editingDeliverable?.id ?? "new-deliverable"} isOpen={isFormOpen} deliverable={editingDeliverable} subjectName={subject.name} onSave={(draft) => editingDeliverable ? onUpdateDeliverable(editingDeliverable.id, draft) : onAddDeliverable(subject.id, draft)} onClose={() => setIsFormOpen(false)} />
+    </section>
+  );
+}
+
 function PhaseFormModal({
   isOpen,
   phase,
@@ -2571,6 +2791,7 @@ export default function TaskManager() {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [newTaskDeliverableId, setNewTaskDeliverableId] = useState<string | null>(null);
   const [isSubjectModalOpen, setIsSubjectModalOpen] = useState(false);
   const [newSubjectParentId, setNewSubjectParentId] = useState<string | null>(null);
   const [isSubjectEditModalOpen, setIsSubjectEditModalOpen] = useState(false);
@@ -3058,6 +3279,19 @@ export default function TaskManager() {
                             </button>
                           </div>
                         </div>
+                        <SubjectDeliverableSection
+                          subject={selectedSubject}
+                          deliverables={workspace.deliverables}
+                          tasks={workspace.tasks}
+                          onAddDeliverable={workspace.addDeliverable}
+                          onUpdateDeliverable={workspace.updateDeliverable}
+                          onDeleteDeliverable={workspace.deleteDeliverable}
+                          onOpenTask={setSelectedTaskId}
+                          onCreateTask={(deliverableId) => {
+                            setNewTaskDeliverableId(deliverableId);
+                            setIsTaskModalOpen(true);
+                          }}
+                        />
                         <SubjectEventSection
                           subject={selectedSubject}
                           events={workspace.subjectEvents}
@@ -3140,18 +3374,24 @@ export default function TaskManager() {
         </div>
       </div>
       <TaskCreateModal
-        key={`create-task-${defaultTaskSubjectIds.join("|")}`}
+        key={`create-task-${defaultTaskSubjectIds.join("|")}-${newTaskDeliverableId ?? "none"}`}
         isOpen={isTaskModalOpen}
         subjects={workspace.subjects}
+        deliverables={workspace.deliverables}
         phases={workspace.phases}
         tasks={workspace.tasks}
         onAddTask={workspace.addTask}
-        onClose={() => setIsTaskModalOpen(false)}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          setNewTaskDeliverableId(null);
+        }}
         defaultSubjectIds={defaultTaskSubjectIds}
+        defaultDeliverableId={newTaskDeliverableId}
       />
       <TaskEditModal
         task={selectedTask}
         subjects={workspace.subjects}
+        deliverables={workspace.deliverables}
         phases={workspace.phases}
         today={workspace.today}
         onPatch={workspace.patchTask}

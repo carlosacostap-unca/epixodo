@@ -79,12 +79,14 @@ function duePayment(
   status = "pending",
   paidAt = null,
   amountMinor = 2500,
+  currency = "ARS",
 ) {
   return {
     id,
     accountId,
     description: id,
     amountMinor,
+    currency,
     dueDate,
     category: "Servicios",
     status,
@@ -178,26 +180,45 @@ const createdPayment = finance.createFinanceDuePayment(
     accountId: account.id,
     description: "  Electricidad  ",
     amountMinor: 4321,
+    currency: "ARS",
     dueDate: "2026-07-27",
     category: "  Servicios  ",
   },
-  new Set([account.id]),
+  new Map([[account.id, account.currency]]),
   new Date(timestamp),
 );
 assert.equal(createdPayment.description, "Electricidad");
 assert.equal(createdPayment.category, "Servicios");
 assert.equal(createdPayment.status, "pending");
 assert.equal(createdPayment.paidAt, null);
+assert.equal(createdPayment.currency, "ARS");
+const unlinkedPayment = finance.createFinanceDuePayment(
+  {
+    accountId: null,
+    description: "  Obra social  ",
+    amountMinor: 9000,
+    currency: "usd",
+    dueDate: "2026-07-28",
+  },
+  new Map([[account.id, account.currency]]),
+  new Date(timestamp),
+);
+assert.equal(unlinkedPayment.accountId, null);
+assert.equal(unlinkedPayment.currency, "USD");
 assert.equal(
   finance.createFinanceDuePayment(
-    { accountId: account.id, description: "Inválido", amountMinor: 0, dueDate: "2026-07-27" },
-    new Set([account.id]),
+    { accountId: account.id, description: "Inválido", amountMinor: 0, currency: "ARS", dueDate: "2026-07-27" },
+    new Map([[account.id, account.currency]]),
     new Date(timestamp),
   ),
   null,
 );
 assert.equal(
-  finance.patchFinanceDuePayment(createdPayment, { dueDate: "fecha" }, new Set([account.id])),
+  finance.patchFinanceDuePayment(createdPayment, { dueDate: "fecha" }, new Map([[account.id, account.currency]])),
+  null,
+);
+assert.equal(
+  finance.patchFinanceDuePayment(createdPayment, { currency: "USD" }, new Map([[account.id, account.currency]])),
   null,
 );
 
@@ -230,7 +251,8 @@ const removed = finance.removeFinanceAccount(
 );
 assert.deepEqual(removed.accounts.map((item) => item.id), [usdAccount.id]);
 assert.deepEqual(removed.entries.map((item) => item.id), [usdIncome.id]);
-assert.deepEqual(removed.duePayments.map((item) => item.id), ["keep"]);
+assert.deepEqual(removed.duePayments.map((item) => item.id), ["pending-late", "keep"]);
+assert.equal(removed.duePayments[0].accountId, null);
 
 const task = {
   id: "task-a",
@@ -265,6 +287,8 @@ const normalized = codec.normalizeWorkspaceData({
   ],
   financeDuePayments: [
     pendingLate,
+    { ...duePayment("legacy-payment", account.id, "2026-07-25"), currency: undefined },
+    duePayment("unlinked-payment", null, "2026-07-26", "pending", null, 3000, "USD"),
     duePayment("orphan-payment", "missing", "2026-07-24"),
     duePayment("invalid-payment", account.id, "not-a-date"),
     duePayment("broken-paid", account.id, "2026-07-24", "paid", null),
@@ -272,7 +296,12 @@ const normalized = codec.normalizeWorkspaceData({
 });
 assert.deepEqual(normalized.financeAccounts.map((item) => item.id), [account.id]);
 assert.deepEqual(normalized.financeEntries.map((item) => item.id), [julyIncome.id]);
-assert.deepEqual(normalized.financeDuePayments.map((item) => item.id), [pendingLate.id]);
+assert.deepEqual(
+  normalized.financeDuePayments.map((item) => item.id),
+  [pendingLate.id, "legacy-payment", "unlinked-payment"],
+);
+assert.equal(normalized.financeDuePayments[1].currency, "ARS");
+assert.equal(normalized.financeDuePayments[2].accountId, null);
 assert.equal(normalized.tasks.length, 1);
 assert.equal(codec.hasWorkspaceContent(normalized), true);
 
@@ -302,6 +331,8 @@ assert.match(financeViewSource, /window\.confirm/);
 assert.match(financeViewSource, /disabled=\{currencyLocked\}/);
 assert.match(financeViewSource, /workspace\.updateFinanceEntry/);
 assert.match(financeViewSource, /Fecha de vencimiento/);
+assert.match(financeViewSource, /Sin cuenta definida/);
+assert.match(financeViewSource, /payment\.currency/);
 assert.match(financeViewSource, /workspace\.setFinanceDuePaymentState/);
 assert.match(financeViewSource, /workspace\.deleteFinanceDuePayment/);
 

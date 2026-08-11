@@ -29,7 +29,7 @@ const mutated = structuredClone(before);
 mutated.subjects.push({ id: "smoke-subject", name: "Smoke test", parentSubjectId: null, horizon: "short", createdAt: smokeTimestamp, updatedAt: smokeTimestamp });
 mutated.phases.push({ id: "smoke-phase", subjectId: "smoke-subject", name: "Smoke phase", plannedStart: "2026-07-26", executedStart: null, plannedEnd: null, executedEnd: null, order: 0, createdAt: smokeTimestamp, updatedAt: smokeTimestamp });
 mutated.subjectEvents.push({ id: "smoke-event", subjectId: "smoke-subject", phaseId: "smoke-phase", kind: "milestone", description: "Smoke event", date: "2026-07-26", createdAt: smokeTimestamp, updatedAt: smokeTimestamp });
-mutated.tasks.push({ id: "smoke-task", title: "Smoke task", notes: "temporary", status: "pending", subjectIds: ["smoke-subject"], phaseId: "smoke-phase", parentTaskId: null, hacerEl: "2026-07-26", venceEl: null, priority: "normal", completedAt: null, createdAt: smokeTimestamp, updatedAt: smokeTimestamp });
+mutated.tasks.push({ id: "smoke-task", title: "Smoke task", notes: "temporary", status: "pending", subjectIds: ["smoke-subject"], phaseId: "smoke-phase", deliverableId: null, parentTaskId: null, hacerEl: "2026-07-26", venceEl: null, priority: "normal", completedAt: null, createdAt: smokeTimestamp, updatedAt: smokeTimestamp });
 mutated.locationEntries.push({ id: "smoke-location", date: "2026-07-26", startTime: "22:00", endTime: "22:30", plannedLocation: "Smoke", actualLocation: "", notes: "temporary", createdAt: smokeTimestamp, updatedAt: smokeTimestamp });
 
 let mutationVerified = false;

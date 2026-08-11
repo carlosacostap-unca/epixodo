@@ -4,6 +4,7 @@ import {
   isValidDateOnly,
   normalizeTaskAiSuggestion,
   type Subject,
+  type SubjectDeliverable,
   type Expectation,
   type SubjectEvent,
   type SubjectPhase,
@@ -47,11 +48,15 @@ type LegacyProject = {
   updatedAt: string;
 };
 
-type LegacyTask = Omit<Task, "subjectIds" | "parentTaskId" | "phaseId" | "aiSuggestion"> & {
+type LegacyTask = Omit<
+  Task,
+  "subjectIds" | "parentTaskId" | "phaseId" | "deliverableId" | "aiSuggestion"
+> & {
   projectId?: string | null;
   subjectIds?: string[];
   parentTaskId?: string | null;
   phaseId?: string | null;
+  deliverableId?: string | null;
   aiSuggestion?: unknown;
 };
 
@@ -141,6 +146,8 @@ function toTask(value: unknown): Task | null {
     status: legacy.status as Task["status"],
     subjectIds: subjectIds.length > 0 ? subjectIds : legacyProjectId ? [legacyProjectId] : [],
     phaseId: typeof legacy.phaseId === "string" ? legacy.phaseId : null,
+    deliverableId:
+      typeof legacy.deliverableId === "string" ? legacy.deliverableId : null,
     parentTaskId: typeof legacy.parentTaskId === "string" ? legacy.parentTaskId : null,
     hacerEl:
       "hacerEl" in legacy
@@ -246,6 +253,31 @@ function toSubjectPhase(value: unknown): SubjectPhase | null {
   };
 }
 
+function toSubjectDeliverable(value: unknown): SubjectDeliverable | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.subjectId !== "string" ||
+    typeof value.name !== "string" ||
+    !value.name.trim() ||
+    typeof value.description !== "string" ||
+    !value.description.trim() ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    subjectId: value.subjectId,
+    name: repairMojibake(value.name.trim()),
+    description: repairMojibake(value.description.trim()),
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
+}
+
 function toSubject(value: unknown): Subject | null {
   if (!isRecord(value)) {
     return null;
@@ -309,6 +341,13 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
           .filter((subject): subject is Subject => Boolean(subject))
       : [];
   const subjectIds = new Set(subjects.map((subject) => subject.id));
+  const deliverables = (Array.isArray(value.deliverables) ? value.deliverables : [])
+    .map(toSubjectDeliverable)
+    .filter((deliverable): deliverable is SubjectDeliverable => Boolean(deliverable))
+    .filter((deliverable) => subjectIds.has(deliverable.subjectId));
+  const deliverablesById = new Map(
+    deliverables.map((deliverable) => [deliverable.id, deliverable]),
+  );
   const phases = normalizePhaseOrder(
     (Array.isArray(value.phases) ? value.phases : [])
       .map(toSubjectPhase)
@@ -349,6 +388,14 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
       return {
         ...task,
         phaseId: phase && task.subjectIds.includes(phase.subjectId) ? phase.id : null,
+        deliverableId: (() => {
+          const deliverable = task.deliverableId
+            ? deliverablesById.get(task.deliverableId)
+            : null;
+          return deliverable && task.subjectIds.includes(deliverable.subjectId)
+            ? deliverable.id
+            : null;
+        })(),
       };
     });
   const expectations = (Array.isArray(value.expectations) ? value.expectations : [])
@@ -359,6 +406,9 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
     .map(toFinanceAccount)
     .filter((account): account is FinanceAccount => Boolean(account));
   const financeAccountIds = new Set(financeAccounts.map((account) => account.id));
+  const financeAccountCurrencies = new Map(
+    financeAccounts.map((account) => [account.id, account.currency]),
+  );
   const financeEntries = (Array.isArray(value.financeEntries) ? value.financeEntries : [])
     .map(toFinanceEntry)
     .filter((entry): entry is FinanceEntry => Boolean(entry))
@@ -366,9 +416,9 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
   const financeDuePayments = (
     Array.isArray(value.financeDuePayments) ? value.financeDuePayments : []
   )
-    .map(toFinanceDuePayment)
+    .map((payment) => toFinanceDuePayment(payment, financeAccountCurrencies))
     .filter((payment): payment is FinanceDuePayment => Boolean(payment))
-    .filter((payment) => financeAccountIds.has(payment.accountId));
+    .filter((payment) => payment.accountId === null || financeAccountIds.has(payment.accountId));
 
   const nutritionProfile = toNutritionProfile(value.nutritionProfile);
   const nutritionFoods = (Array.isArray(value.nutritionFoods) ? value.nutritionFoods : [])
@@ -405,6 +455,7 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
     tasks,
     expectations,
     subjects,
+    deliverables,
     phases,
     subjectEvents,
     financeAccounts,
@@ -438,6 +489,7 @@ export function hasWorkspaceContent(workspace: WorkspaceData): boolean {
     workspace.tasks.length > 0 ||
     workspace.expectations.length > 0 ||
     workspace.subjects.length > 0 ||
+    workspace.deliverables.length > 0 ||
     workspace.phases.length > 0 ||
     workspace.subjectEvents.length > 0 ||
     workspace.financeAccounts.length > 0 ||
@@ -517,11 +569,27 @@ function toFinanceEntry(value: unknown): FinanceEntry | null {
   };
 }
 
-function toFinanceDuePayment(value: unknown): FinanceDuePayment | null {
+function toFinanceDuePayment(
+  value: unknown,
+  accountCurrencies: Map<string, string>,
+): FinanceDuePayment | null {
   if (!isRecord(value)) return null;
+  const accountId = typeof value.accountId === "string"
+    ? value.accountId
+    : value.accountId === null
+      ? null
+      : undefined;
+  const currency = isCurrencyCode(value.currency)
+    ? value.currency
+    : accountId
+      ? accountCurrencies.get(accountId)
+      : undefined;
+
   if (
     typeof value.id !== "string" ||
-    typeof value.accountId !== "string" ||
+    accountId === undefined ||
+    !currency ||
+    (accountId !== null && accountCurrencies.get(accountId) !== currency) ||
     typeof value.description !== "string" ||
     !value.description.trim() ||
     !Number.isSafeInteger(value.amountMinor) ||
@@ -538,9 +606,10 @@ function toFinanceDuePayment(value: unknown): FinanceDuePayment | null {
 
   return {
     id: value.id,
-    accountId: value.accountId,
+    accountId,
     description: repairMojibake(value.description.trim()),
     amountMinor: value.amountMinor as number,
+    currency,
     dueDate: value.dueDate,
     category: typeof value.category === "string" ? repairMojibake(value.category.trim()) : "",
     status: value.status,

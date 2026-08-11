@@ -40,7 +40,9 @@ export default function InboxAiSuggestion({ suggestion, accounts, subjects, toda
 }) {
   const compatibleAccounts = useMemo(() => "currency" in suggestion ? accounts.filter((account) => account.currency === suggestion.currency) : [], [accounts, suggestion]);
   const suggestedSubject = useMemo(() => "subjectName" in suggestion ? subjects.find((subject) => subject.name.toLocaleLowerCase("es") === suggestion.subjectName.toLocaleLowerCase("es")) : undefined, [subjects, suggestion]);
-  const [accountId, setAccountId] = useState(compatibleAccounts[0]?.id ?? "");
+  const [accountId, setAccountId] = useState(
+    suggestion.type === "finance_entry" ? compatibleAccounts[0]?.id ?? "" : "",
+  );
   const [subjectId, setSubjectId] = useState(suggestedSubject?.id ?? "");
   const [fields, setFields] = useState<Record<string, string>>(() => suggestionFields(suggestion, today));
   const [error, setError] = useState("");
@@ -63,8 +65,8 @@ export default function InboxAiSuggestion({ suggestion, accounts, subjects, toda
         onApply({ type: "finance_entry", draft: { accountId, kind: fields.kind as "income" | "expense", date: fields.date, description: fields.description.trim(), amountMinor, category: fields.category.trim() } });
         return;
       case "finance_due_payment":
-        if (!accountId || !amountMinor || amountMinor <= 0 || !required("dueDate", "description")) return setError(`Elegí una cuenta en ${suggestion.currency} y revisá vencimiento, descripción e importe.`);
-        onApply({ type: "finance_due_payment", draft: { accountId, dueDate: fields.dueDate, description: fields.description.trim(), amountMinor, category: fields.category.trim() } });
+        if (!amountMinor || amountMinor <= 0 || !required("dueDate", "description")) return setError("Revisá vencimiento, descripción e importe.");
+        onApply({ type: "finance_due_payment", draft: { accountId: accountId || null, currency: suggestion.currency, dueDate: fields.dueDate, description: fields.description.trim(), amountMinor, category: fields.category.trim() } });
         return;
       case "subject_event":
         if (!subjectId || !required("date", "description")) return setError("Elegí un asunto y revisá la fecha y la descripción.");
@@ -97,7 +99,8 @@ export default function InboxAiSuggestion({ suggestion, accounts, subjects, toda
     }
   }
 
-  const needsAccount = suggestion.type === "finance_entry" || suggestion.type === "finance_due_payment";
+  const usesAccount = suggestion.type === "finance_entry" || suggestion.type === "finance_due_payment";
+  const requiresAccount = suggestion.type === "finance_entry";
   const needsSubject = suggestion.type === "subject_event";
 
   return (
@@ -108,12 +111,12 @@ export default function InboxAiSuggestion({ suggestion, accounts, subjects, toda
         <p className="max-w-xs text-right text-xs leading-5 text-[#76919e]">Los campos son editables. Nada se registra hasta que confirmes.</p>
       </div>
 
-      {needsAccount && compatibleAccounts.length === 0 ? <MissingDependency title={`Falta una cuenta en ${suggestion.currency}`} action="Abrir Finanzas" onClick={() => onOpenModule("finances")} /> : null}
+      {requiresAccount && compatibleAccounts.length === 0 ? <MissingDependency title={`Falta una cuenta en ${suggestion.currency}`} action="Abrir Finanzas" onClick={() => onOpenModule("finances")} /> : null}
       {needsSubject && subjects.length === 0 ? <MissingDependency title="Falta crear un asunto" action="Abrir Asuntos" onClick={() => onOpenModule("subjects")} /> : null}
 
-      {(!needsAccount || compatibleAccounts.length > 0) && (!needsSubject || subjects.length > 0) ? (
+      {(!requiresAccount || compatibleAccounts.length > 0) && (!needsSubject || subjects.length > 0) ? (
         <div className="relative mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {needsAccount ? <Select label="Cuenta" value={accountId} onChange={setAccountId}>{compatibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</Select> : null}
+          {usesAccount ? <Select label={requiresAccount ? "Cuenta" : "Cuenta (opcional)"} value={accountId} onChange={setAccountId}>{!requiresAccount ? <option value="">Sin cuenta definida</option> : null}{compatibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</Select> : null}
           {(suggestion.type === "task" || suggestion.type === "subject_event") ? <Select label="Asunto" value={subjectId} onChange={setSubjectId}><option value="">Sin asunto</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</Select> : null}
           <SuggestionFields suggestion={suggestion} fields={fields} set={set} />
           <button type="submit" className="self-end rounded-lg bg-[#7fd8d0] px-4 py-2.5 text-sm font-black text-[#062021] shadow-[0_8px_22px_rgba(127,216,208,0.14)] transition hover:-translate-y-0.5 hover:bg-[#a6eee7] focus:outline-none focus:ring-2 focus:ring-[#7fd8d0]/35">{meta.action}</button>

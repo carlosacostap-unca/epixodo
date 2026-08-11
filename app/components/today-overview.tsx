@@ -90,7 +90,7 @@ export default function TodayOverview({
   );
   const payments = workspace.financeDuePayments.filter((payment) => {
     const account = workspace.financeAccounts.find((item) => item.id === payment.accountId);
-    return payment.status === "pending" && compareDateOnly(payment.dueDate, workspace.today) <= 0 && matchesQuery(searchQuery, payment.description, payment.category, account?.name);
+    return payment.status === "pending" && compareDateOnly(payment.dueDate, workspace.today) <= 0 && matchesQuery(searchQuery, payment.description, payment.category, payment.currency, account?.name, payment.accountId ? undefined : "sin cuenta");
   });
   const expectations = workspace.expectations.filter((item) =>
     item.status === "pending" && compareDateOnly(item.expectedDate, workspace.today) <= 0 && matchesQuery(searchQuery, item.title, item.notes, item.source),
@@ -137,7 +137,7 @@ export default function TodayOverview({
 
         <section className="overflow-hidden rounded-2xl border border-[#5b3d3b] bg-[#1d171b]">
           <SectionHeader eyebrow="Finanzas" title="Pagos que requieren atención" count={payments.length} tone="text-[#ff9d88]" onOpen={() => onNavigate("finances")} />
-          {payments.length ? <div className="divide-y divide-[#432d30]">{payments.map((payment) => { const account = workspace.financeAccounts.find((item) => item.id === payment.accountId); const overdue = compareDateOnly(payment.dueDate, workspace.today) < 0; return <AgendaCard key={payment.id}><div><div className="flex flex-wrap items-center gap-2"><p className="font-black text-[#fff0ed]">{payment.description}</p>{overdue ? <span className="rounded-full bg-[#4a2323] px-2 py-0.5 text-[10px] font-black uppercase text-[#ff9d88]">Vencido</span> : null}</div><p className="mt-1 text-xs text-[#a98b8b]">{account?.name ?? "Cuenta"} · {formatMoney(payment.amountMinor, account?.currency ?? "ARS")}</p></div><button type="button" onClick={() => workspace.setFinanceDuePaymentState(payment.id, "paid")} className="rounded-lg border border-[#724b48] px-3 py-2 text-xs font-black text-[#ffb0a0] hover:bg-[#321e20]">Marcar pagado</button></AgendaCard>; })}</div> : <EmptySection>No hay pagos pendientes para hoy.</EmptySection>}
+          {payments.length ? <div className="divide-y divide-[#432d30]">{payments.map((payment) => { const account = workspace.financeAccounts.find((item) => item.id === payment.accountId); const overdue = compareDateOnly(payment.dueDate, workspace.today) < 0; return <AgendaCard key={payment.id}><div><div className="flex flex-wrap items-center gap-2"><p className="font-black text-[#fff0ed]">{payment.description}</p>{overdue ? <span className="rounded-full bg-[#4a2323] px-2 py-0.5 text-[10px] font-black uppercase text-[#ff9d88]">Vencido</span> : null}</div><p className="mt-1 text-xs text-[#a98b8b]">{account?.name ?? "Sin cuenta definida"} · {formatMoney(payment.amountMinor, payment.currency)}</p></div><button type="button" onClick={() => workspace.setFinanceDuePaymentState(payment.id, "paid")} className="rounded-lg border border-[#724b48] px-3 py-2 text-xs font-black text-[#ffb0a0] hover:bg-[#321e20]">Marcar pagado</button></AgendaCard>; })}</div> : <EmptySection>No hay pagos pendientes para hoy.</EmptySection>}
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-[#464878] bg-[#161a32]">
