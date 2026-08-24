@@ -13,13 +13,17 @@ const relation = (target, required = true) => ({ type: "relation", required, tar
 const text = (required = false) => ({ type: "text", required });
 const number = (required = true) => ({ type: "number", required });
 const date = (required = false) => ({ type: "date", required });
-const select = (required = true) => ({ type: "select", required });
+const select = (required = true, values) => ({
+  type: "select",
+  required,
+  ...(values ? { values } : {}),
+});
 const json = () => ({ type: "json", required: false });
 const bool = () => ({ type: "bool", required: false });
 const editor = (required = false) => ({ type: "editor", required });
 
 export const normalizedSchema = {
-  subjects: { fields: fields({ name: text(true), horizon: select(), parent: relation("subjects", false) }) },
+  subjects: { fields: fields({ name: text(true), horizon: select(true, ["short", "medium", "long", "waiting_response", "up_to_date", "none"]), parent: relation("subjects", false) }) },
   subject_deliverables: { fields: fields({ subject: relation("subjects"), name: text(true), description: editor(true) }) },
   subject_phases: { fields: fields({ subject: relation("subjects"), name: text(true), planned_start: text(), executed_start: text(), planned_end: text(), executed_end: text(), position: number(false) }) },
   subject_events: { fields: fields({ subject: relation("subjects"), phase: relation("subject_phases", false), kind: select(), description: text(true), event_date: text(true) }) },

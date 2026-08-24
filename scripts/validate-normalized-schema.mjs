@@ -31,6 +31,9 @@ for (const [name, expected] of Object.entries(normalizedSchema)) {
     }
     if (field.type !== fieldExpected.type) errors.push(`${name}.${fieldName}: expected ${fieldExpected.type}, got ${field.type}`);
     if (Boolean(field.required) !== fieldExpected.required) errors.push(`${name}.${fieldName}: required mismatch`);
+    if (fieldExpected.values && JSON.stringify(field.values) !== JSON.stringify(fieldExpected.values)) {
+      errors.push(`${name}.${fieldName}: select values mismatch`);
+    }
     if (fieldExpected.target) {
       const target = byName.get(fieldExpected.target);
       if (!target || field.collectionId !== target.id) errors.push(`${name}.${fieldName}: relation target mismatch`);

@@ -104,7 +104,13 @@ export type TaskAiSuggestion =
   | NutritionIntakeSuggestion
   | ExpectationSuggestion;
 
-export type SubjectHorizon = "short" | "medium" | "long" | "none";
+export type SubjectHorizon =
+  | "short"
+  | "medium"
+  | "long"
+  | "waiting_response"
+  | "up_to_date"
+  | "none";
 
 export type Subject = {
   id: string;
@@ -253,6 +259,8 @@ export const subjectHorizons: { value: SubjectHorizon; label: string }[] = [
   { value: "short", label: "Corto plazo" },
   { value: "medium", label: "Mediano plazo" },
   { value: "long", label: "Largo plazo" },
+  { value: "waiting_response", label: "Esperando respuesta" },
+  { value: "up_to_date", label: "Al día" },
   { value: "none", label: "Sin plazo" },
 ];
 

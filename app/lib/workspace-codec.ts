@@ -65,7 +65,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isSubjectHorizon(value: unknown): value is SubjectHorizon {
-  return value === "short" || value === "medium" || value === "long" || value === "none";
+  return (
+    value === "short" ||
+    value === "medium" ||
+    value === "long" ||
+    value === "waiting_response" ||
+    value === "up_to_date" ||
+    value === "none"
+  );
 }
 
 function toLocationEntry(value: unknown): LocationEntry | null {

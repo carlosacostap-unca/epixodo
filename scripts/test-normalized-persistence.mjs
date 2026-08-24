@@ -47,7 +47,11 @@ const request = async (path, options = {}) => {
 
 const timestamp = "2026-07-26T12:00:00.000Z";
 const workspace = {
-  subjects: [{ id: "subject-1", name: "Trabajo", parentSubjectId: null, horizon: "short", createdAt: timestamp, updatedAt: timestamp }],
+  subjects: [
+    { id: "subject-1", name: "Trabajo", parentSubjectId: null, horizon: "short", createdAt: timestamp, updatedAt: timestamp },
+    { id: "subject-2", name: "Respuesta pendiente", parentSubjectId: null, horizon: "waiting_response", createdAt: timestamp, updatedAt: timestamp },
+    { id: "subject-3", name: "Seguimiento al día", parentSubjectId: null, horizon: "up_to_date", createdAt: timestamp, updatedAt: timestamp },
+  ],
   deliverables: [{ id: "deliverable-1", subjectId: "subject-1", name: "Informe final", description: "Documento revisado y listo para entregar.", createdAt: timestamp, updatedAt: timestamp }],
   phases: [{ id: "phase-1", subjectId: "subject-1", name: "Inicio", plannedStart: "2026-07-26", executedStart: null, plannedEnd: null, executedEnd: null, order: 0, createdAt: timestamp, updatedAt: timestamp }],
   subjectEvents: [{ id: "event-1", subjectId: "subject-1", phaseId: "phase-1", kind: "deadline", description: "Entrega", date: "2026-07-31", createdAt: timestamp, updatedAt: timestamp }],
@@ -103,6 +107,8 @@ assert.equal(loaded.phases[0].order, 0, "zero-based phase order must survive");
 assert.equal(loaded.tasks[0].deliverableId, "deliverable-1", "task deliverable relation must survive");
 assert.equal(loaded.deliverables[0].description, "Documento revisado y listo para entregar.");
 assert.equal(loaded.nutritionProfile.energyGoalKcalMilli, null, "nullable goals must survive");
+assert.equal(loaded.subjects[1].horizon, "waiting_response", "waiting-response horizon must survive");
+assert.equal(loaded.subjects[2].horizon, "up_to_date", "up-to-date horizon must survive");
 
 const countsAfterFirstSave = Object.fromEntries([...db].map(([name, records]) => [name, records.length]));
 await saveNormalizedWorkspace(request, owner, workspace);
