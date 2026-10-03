@@ -105,6 +105,7 @@ export type TaskAiSuggestion =
   | ExpectationSuggestion;
 
 export type SubjectHorizon =
+  | "working"
   | "short"
   | "medium"
   | "long"
@@ -256,6 +257,7 @@ export const taskPriorities: { value: TaskPriority; label: string }[] = [
 ];
 
 export const subjectHorizons: { value: SubjectHorizon; label: string }[] = [
+  { value: "working", label: "Trabajando" },
   { value: "short", label: "Corto plazo" },
   { value: "medium", label: "Mediano plazo" },
   { value: "long", label: "Largo plazo" },
