@@ -66,6 +66,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isSubjectHorizon(value: unknown): value is SubjectHorizon {
   return (
+    value === "closure" ||
     value === "working" ||
     value === "short" ||
     value === "medium" ||

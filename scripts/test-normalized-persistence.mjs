@@ -52,6 +52,7 @@ const workspace = {
     { id: "subject-2", name: "Respuesta pendiente", parentSubjectId: null, horizon: "waiting_response", createdAt: timestamp, updatedAt: timestamp },
     { id: "subject-3", name: "Seguimiento al día", parentSubjectId: null, horizon: "up_to_date", createdAt: timestamp, updatedAt: timestamp },
     { id: "subject-4", name: "Trabajo activo", parentSubjectId: null, horizon: "working", createdAt: timestamp, updatedAt: timestamp },
+    { id: "subject-5", name: "Cierre del asunto", parentSubjectId: null, horizon: "closure", createdAt: timestamp, updatedAt: timestamp },
   ],
   deliverables: [{ id: "deliverable-1", subjectId: "subject-1", name: "Informe final", description: "Documento revisado y listo para entregar.", createdAt: timestamp, updatedAt: timestamp }],
   phases: [{ id: "phase-1", subjectId: "subject-1", name: "Inicio", plannedStart: "2026-07-26", executedStart: null, plannedEnd: null, executedEnd: null, order: 0, createdAt: timestamp, updatedAt: timestamp }],
@@ -111,6 +112,7 @@ assert.equal(loaded.nutritionProfile.energyGoalKcalMilli, null, "nullable goals 
 assert.equal(loaded.subjects[1].horizon, "waiting_response", "waiting-response horizon must survive");
 assert.equal(loaded.subjects[2].horizon, "up_to_date", "up-to-date horizon must survive");
 assert.equal(loaded.subjects[3].horizon, "working", "working horizon must survive");
+assert.equal(loaded.subjects[4].horizon, "closure", "closure horizon must survive");
 
 const countsAfterFirstSave = Object.fromEntries([...db].map(([name, records]) => [name, records.length]));
 await saveNormalizedWorkspace(request, owner, workspace);
