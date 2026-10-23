@@ -12,6 +12,7 @@ import CompanionView from "./companion-view";
 import TodayOverview, { getTodayOverviewCount } from "./today-overview";
 import InboxAiSuggestion, { type InboxSuggestionAction } from "./inbox-ai-suggestion";
 import LogoutButton from "./logout-button";
+import MobileNavigation from "./mobile-navigation";
 import type { FinanceAccount } from "../lib/finance";
 import {
   compareDateOnly,
@@ -2786,7 +2787,7 @@ function SubjectHorizonBoard({
 
 export default function TaskManager() {
   const workspace = useTaskWorkspace();
-  const [activeView, setActiveView] = useState<ViewKey>("today");
+  const [activeView, setActiveView] = useState<ViewKey>("capture");
   const [companionConversationCount, setCompanionConversationCount] = useState(0);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2978,8 +2979,8 @@ export default function TaskManager() {
         </div>
       ) : null}
       <div className="relative grid min-h-screen grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[248px_minmax(0,1fr)] lg:grid-rows-1">
-        <nav aria-label="Vistas principales" className="min-w-0 max-w-full border-b border-[#20334d] bg-[#0b1624]/95 px-3 py-3 backdrop-blur-xl lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-b-0 lg:border-r lg:px-4 lg:py-5">
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#253a57] bg-[#0d1a2a] px-3 py-3 shadow-[0_18px_55px_rgba(0,0,0,0.2)] lg:block lg:px-4 lg:py-4">
+        <nav aria-label="Vistas principales" className="sticky top-0 z-30 min-w-0 max-w-full self-start border-b border-[#20334d] bg-[#0b1624]/95 px-3 py-3 backdrop-blur-xl lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-4 lg:py-5">
+          <div className="flex items-center justify-between gap-4 px-1 lg:block lg:rounded-2xl lg:border lg:border-[#253a57] lg:bg-[#0d1a2a] lg:px-4 lg:py-4 lg:shadow-[0_18px_55px_rgba(0,0,0,0.2)]">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#82afff] font-mono text-sm font-black text-[#07111d] shadow-[0_8px_22px_rgba(130,175,255,0.25)]">E</span>
               <div className="min-w-0">
@@ -2999,10 +3000,18 @@ export default function TaskManager() {
                 <span className="block h-full rounded-full bg-[#63d3a5] transition-[width] duration-500" style={{ width: `${completionRate}%` }} />
               </div>
             </div>
-            <span className="shrink-0 rounded-full border border-[#2f496c] bg-[#13233a] px-2.5 py-1 font-mono text-xs font-black text-[#bcd3f8] lg:hidden">{activeTasks.length}</span>
+            <MobileNavigation>
+              {navItems.map((item) => (
+                <button key={item.key} type="button" aria-current={activeView === item.key ? "page" : undefined} onClick={() => { setActiveView(item.key); setSearchQuery(""); }} className={`grid min-h-12 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold ${activeView === item.key ? "bg-[#17345a] text-[#f2f6ff]" : "text-[#9fb0c9] hover:bg-[#192d46]"}`}>
+                  <ViewIcon view={item.key} />
+                  <span>{viewLabels[item.key]}</span>
+                  {item.count > 0 ? <span className="rounded-full bg-[#1d304a] px-2 py-0.5 font-mono text-[10px] text-[#aebbd0]">{item.count}</span> : null}
+                </button>
+              ))}
+            </MobileNavigation>
           </div>
 
-          <div className="hide-scrollbar -mx-3 mt-3 flex gap-2 overflow-x-auto px-3 pb-1 lg:mx-0 lg:mt-6 lg:grid lg:gap-1 lg:overflow-visible lg:px-0 lg:pb-0">
+          <div className="hidden lg:mt-6 lg:grid lg:gap-1">
             {navItems.map((item) => {
               const isActive = activeView === item.key;
 
@@ -3010,7 +3019,7 @@ export default function TaskManager() {
                 <button
                   key={item.key}
                   type="button"
-                  onClick={() => setActiveView(item.key)}
+                  onClick={() => { setActiveView(item.key); setSearchQuery(""); }}
                   className={`flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-left text-sm font-bold transition duration-200 focus:outline-none focus:ring-2 focus:ring-[#82afff]/30 lg:grid lg:h-11 lg:w-full lg:grid-cols-[20px_minmax(0,1fr)_auto] lg:gap-3 ${
                     isActive
                       ? "border-[#3c68a5] bg-[#17345a] text-[#f2f6ff] shadow-[inset_0_0_0_1px_rgba(130,175,255,0.08)]"
@@ -3031,7 +3040,8 @@ export default function TaskManager() {
             })}
           </div>
 
-          <div className="mt-auto hidden rounded-2xl border border-[#243955] bg-[#0d1a2a] p-3 lg:block">
+          <div className="mt-auto hidden space-y-4 rounded-2xl border border-[#243955] bg-[#0d1a2a] p-3 lg:block">
+            <LogoutButton />
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Atajos</p>
             <div className="mt-2 grid gap-2 text-xs text-[#91a3bc]">
               <div className="flex items-center justify-between"><span>Buscar</span><kbd className="rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[#cad8ed]">/</kbd></div>
@@ -3042,7 +3052,7 @@ export default function TaskManager() {
         </nav>
 
         <div className="min-w-0">
-          <header className="sticky top-0 z-20 border-b border-[#20334d] bg-[#07111d]/88 px-4 py-3 backdrop-blur-xl md:px-6">
+          {activeView !== "capture" ? <header className="sticky top-0 z-20 hidden lg:block border-b border-[#20334d] bg-[#07111d]/88 px-4 py-3 backdrop-blur-xl md:px-6">
             <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3">
               <label className="relative min-w-[220px] flex-1">
                 <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7890b2]">
@@ -3058,44 +3068,19 @@ export default function TaskManager() {
                 />
                 <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#8295b0] sm:block">/</kbd>
               </label>
-              <div className="flex items-center gap-2 text-xs font-bold text-[#9dabc6]">
-                <span className="hidden rounded-full border border-[#2c4260] bg-[#0d1a2a] px-3 py-2 font-mono sm:inline-flex">
-                  {workspace.today}
-                </span>
-                <span
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 ${
-                    workspace.syncError
-                      ? "border-[#7a3d32] bg-[#2e1716] text-[#ff9d88]"
-                      : workspace.isSaving
-                        ? "border-[#315887] bg-[#132844] text-[#82afff]"
-                        : "border-[#2d674f] bg-[#102b23] text-[#63d3a5]"
-                  }`}
-                >
-                  <span className={`h-1.5 w-1.5 rounded-full ${workspace.syncError ? "bg-[#ff9d88]" : workspace.isSaving ? "animate-pulse bg-[#82afff]" : "bg-[#63d3a5]"}`} />
-                  {workspace.syncError
-                    ? "Sin sincronizar"
-                    : workspace.isSaving
-                      ? "Sincronizando"
-                      : "Sincronizado"}
-                </span>
-                <LogoutButton />
-              </div>
+
             </div>
-            {workspace.syncError ? (
-              <p className="mt-2 text-xs font-semibold text-[#ff9d88]">
-                {workspace.syncError}
-              </p>
-            ) : null}
-          </header>
+          </header> : null}
+          {workspace.syncError ? (
+            <p role="alert" className="mx-4 mt-4 rounded-xl border border-[#7a3d32] bg-[#2e1716] p-3 text-sm text-[#ffafa5]">{workspace.syncError}</p>
+          ) : null}
 
           <div className="mx-auto grid max-w-[1500px] gap-5 p-4 md:p-6 lg:p-8">
             <section key={activeView} className="view-enter min-w-0 space-y-6">
-              <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#20334d] pb-5">
+              {activeView !== "capture" ? <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#20334d] pb-5">
                 <div>
                   <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
-                    {activeView === "capture"
-                      ? "Texto o voz / procesado con IA"
-                      : activeView === "companion"
+                    {activeView === "companion"
                       ? `${companionConversationCount} ${companionConversationCount === 1 ? "conversación guardada" : "conversaciones guardadas"}`
                       : activeView === "today"
                       ? hasSearch
@@ -3155,7 +3140,7 @@ export default function TaskManager() {
                       Limpiar busqueda
                     </button>
                   ) : null}
-                  {activeView !== "capture" && activeView !== "companion" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "finances" && activeView !== "nutrition" && activeView !== "locations" && activeView !== "expectations" ? (
+                  {activeView !== "companion" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "finances" && activeView !== "nutrition" && activeView !== "locations" && activeView !== "expectations" ? (
                     <button
                       type="button"
                       onClick={() => setIsTaskModalOpen(true)}
@@ -3165,7 +3150,7 @@ export default function TaskManager() {
                     </button>
                   ) : null}
                 </div>
-              </div>
+              </div> : null}
 
               {activeView === "capture" ? (
                 <CaptureView
