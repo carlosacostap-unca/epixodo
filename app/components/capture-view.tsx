@@ -178,6 +178,17 @@ export default function CaptureView({ onAddTask, onOpenInbox }: {
     }
   }
 
+  function cancelVoiceEntry() {
+    if (busyRef.current) return;
+    setText("");
+    setPreparedCapture(null);
+    setHasTranscript(false);
+    setRetryAudio(null);
+    setError("");
+    setSeconds(0);
+    setState("idle");
+  }
+
   async function startRecording() {
     if (busyRef.current) return;
     setError("");
@@ -271,9 +282,16 @@ export default function CaptureView({ onAddTask, onOpenInbox }: {
         <div className="mt-5">
           <label htmlFor="capture-text" className={mode === "voice" ? "mb-3 block text-sm font-semibold text-[#c8d5e8]" : "sr-only"}>{mode === "voice" ? "Tu transcripción · podés editarla" : "Escribí tu entrada"}</label>
           <textarea ref={editorRef} id="capture-text" value={text} disabled={isBusy} maxLength={12_000} onChange={(event) => { setText(event.target.value); setError(""); if (state === "saved") setState("idle"); }} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveEntry(); } }} placeholder="¿Qué querés guardar?" className="min-h-64 w-full resize-y rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-5 text-base leading-7 text-[#edf4ff] outline-none transition placeholder:text-[#7185a3] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15 sm:min-h-72" />
-          <button type="button" disabled={!text.trim() || isBusy} onClick={() => void saveEntry()} className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#82afff] px-5 py-3 text-sm font-bold text-[#07111d] transition hover:bg-[#a8c7ff] disabled:opacity-45">
-            {state === "saving" ? "Guardando…" : "Guardar entrada"}
-          </button>
+          <div className="mt-4 flex gap-3">
+            {mode === "voice" && hasTranscript ? (
+              <button type="button" disabled={isBusy} onClick={cancelVoiceEntry} className="min-h-12 rounded-xl border border-[#293f5e] px-5 py-3 text-sm font-bold text-[#c8d5e8] transition hover:bg-[#192d46]">
+                Cancelar
+              </button>
+            ) : null}
+            <button type="button" disabled={!text.trim() || isBusy} onClick={() => void saveEntry()} className="flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#82afff] px-5 py-3 text-sm font-bold text-[#07111d] transition hover:bg-[#a8c7ff] disabled:opacity-45">
+              {state === "saving" ? "Guardando…" : "Guardar entrada"}
+            </button>
+          </div>
         </div>
       ) : null}
 
