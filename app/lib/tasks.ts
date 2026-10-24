@@ -152,7 +152,7 @@ export type SubjectPhaseDraft = Pick<SubjectPhase, "name"> &
     Pick<SubjectPhase, "plannedStart" | "executedStart" | "plannedEnd" | "executedEnd">
   >;
 
-export type SubjectEventKind = "milestone" | "deadline";
+export type SubjectEventKind = "milestone" | "deadline" | "event";
 
 export type SubjectEvent = {
   id: string;
@@ -161,12 +161,16 @@ export type SubjectEvent = {
   kind: SubjectEventKind;
   description: string;
   date: DateOnly;
+  startTime: string | null;
+  endTime: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
 export type SubjectEventDraft = Pick<SubjectEvent, "kind" | "description" | "date"> & {
   phaseId?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
 };
 
 export type Task = {
@@ -414,7 +418,17 @@ export function sortedExpectations(expectations: Expectation[]): Expectation[] {
 }
 
 export function isSubjectEventKind(value: unknown): value is SubjectEventKind {
-  return value === "milestone" || value === "deadline";
+  return value === "milestone" || value === "deadline" || value === "event";
+}
+
+export function isValidEventTimeRange(start: unknown, end: unknown): boolean {
+  const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+  return typeof start === "string" && typeof end === "string" &&
+    timePattern.test(start) && timePattern.test(end) && start < end;
+}
+
+export function getSubjectEventLabel(kind: SubjectEventKind): string {
+  return kind === "event" ? "Evento" : kind === "milestone" ? "Hito" : "Vencimiento";
 }
 
 export function isValidSubjectEventDraft(draft: SubjectEventDraft): boolean {
@@ -422,6 +436,7 @@ export function isValidSubjectEventDraft(draft: SubjectEventDraft): boolean {
     isSubjectEventKind(draft.kind) &&
     Boolean(draft.description.trim()) &&
     isValidDateOnly(draft.date) &&
+    (draft.kind !== "event" || isValidEventTimeRange(draft.startTime, draft.endTime)) &&
     (draft.phaseId === undefined || draft.phaseId === null || typeof draft.phaseId === "string")
   );
 }
@@ -586,6 +601,8 @@ export function createSubjectEvent(
     kind: draft.kind,
     description: draft.description.trim(),
     date: draft.date,
+    startTime: draft.kind === "event" ? draft.startTime ?? null : null,
+    endTime: draft.kind === "event" ? draft.endTime ?? null : null,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -604,6 +621,11 @@ export function patchSubjectEvent(
     updatedAt: now.toISOString(),
   };
 
+  if (updated.kind !== "event") {
+    updated.startTime = null;
+    updated.endTime = null;
+  }
+
   return isValidSubjectEventDraft(updated) ? updated : null;
 }
 
@@ -616,6 +638,7 @@ export function sortedSubjectEvents(
     .sort(
       (a, b) =>
         compareDateOnly(a.date, b.date) ||
+        (a.startTime ?? "").localeCompare(b.startTime ?? "") ||
         a.createdAt.localeCompare(b.createdAt) ||
         a.id.localeCompare(b.id),
     );

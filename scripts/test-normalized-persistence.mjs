@@ -56,7 +56,10 @@ const workspace = {
   ],
   deliverables: [{ id: "deliverable-1", subjectId: "subject-1", name: "Informe final", description: "Documento revisado y listo para entregar.", createdAt: timestamp, updatedAt: timestamp }],
   phases: [{ id: "phase-1", subjectId: "subject-1", name: "Inicio", plannedStart: "2026-07-26", executedStart: null, plannedEnd: null, executedEnd: null, order: 0, createdAt: timestamp, updatedAt: timestamp }],
-  subjectEvents: [{ id: "event-1", subjectId: "subject-1", phaseId: "phase-1", kind: "deadline", description: "Entrega", date: "2026-07-31", createdAt: timestamp, updatedAt: timestamp }],
+  subjectEvents: [
+    { id: "event-1", subjectId: "subject-1", phaseId: "phase-1", kind: "deadline", description: "Entrega", date: "2026-07-31", startTime: null, endTime: null, createdAt: timestamp, updatedAt: timestamp },
+    { id: "event-2", subjectId: "subject-1", phaseId: null, kind: "event", description: "Reunión", date: "2026-07-31", startTime: "09:30", endTime: "10:45", createdAt: timestamp, updatedAt: timestamp },
+  ],
   tasks: [{
     id: "task-1",
     title: "Registrar gasto de Uber al Nodo",
@@ -101,6 +104,8 @@ const workspace = {
 await saveNormalizedWorkspace(request, owner, workspace);
 const loaded = await getNormalizedWorkspace(request, owner);
 assert.deepEqual(loaded, workspace);
+assert.equal(db.get("subject_events").find((item) => item.client_id === "event-2").start_time, "09:30");
+assert.equal(db.get("subject_events").find((item) => item.client_id === "event-2").end_time, "10:45");
 assert.equal(loaded.tasks[0].notes, "Capturado por voz.", "suggestion metadata must stay hidden from task notes");
 assert.equal(loaded.tasks[0].aiSuggestion.amountMinor, 310000, "AI expense suggestion must survive persistence");
 assert.equal(loaded.expectations[0].status, "pending", "expectations must survive without becoming tasks");
@@ -132,5 +137,17 @@ failingCollection = null;
 await saveNormalizedWorkspace(request, owner, nextWorkspace);
 assert.equal(db.get("location_entries").some((item) => item.client_id === "location-1"), false, "successful retry must delete stale records");
 assert.equal((await getNormalizedWorkspace(request, owner)).tasks.length, 2);
+
+nextWorkspace.subjectEvents[1].startTime = "11:00";
+nextWorkspace.subjectEvents[1].endTime = "12:15";
+await saveNormalizedWorkspace(request, owner, nextWorkspace);
+assert.equal((await getNormalizedWorkspace(request, owner)).subjectEvents[1].endTime, "12:15");
+assert.equal(db.get("subject_events").length, 2, "editing an event must keep its identity");
+nextWorkspace.subjectEvents = nextWorkspace.subjectEvents.filter((item) => item.id !== "event-2");
+await saveNormalizedWorkspace(request, owner, nextWorkspace);
+assert.equal(db.get("subject_events").length, 1, "deleting a timed event preserves the deadline");
+delete db.get("subject_events")[0].start_time;
+delete db.get("subject_events")[0].end_time;
+assert.equal((await getNormalizedWorkspace(request, owner)).subjectEvents[0].startTime, null, "legacy records load without time fields");
 
 console.log("Normalized persistence tests passed");

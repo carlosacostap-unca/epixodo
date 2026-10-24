@@ -155,4 +155,43 @@ assert.deepEqual(tasks.removeSubjectEventFromWorkspace(workspace, created.id).su
 assert.equal(tasks.removePhaseFromWorkspace(workspace, phase.id, timestamp).subjectEvents[0].phaseId, null);
 assert.deepEqual(tasks.removeSubjectFromWorkspace(workspace, subject.id, timestamp).subjectEvents, []);
 
-console.log("Subject milestone and deadline tests passed.");
+const timedDraft = { kind: "event", description: "  Reunión de equipo  ", date: "2026-08-01", startTime: "09:30", endTime: "10:45" };
+assert.equal(tasks.isValidSubjectEventDraft(timedDraft), true);
+for (const patch of [
+  { startTime: undefined }, { endTime: null }, { startTime: "9:30" },
+  { startTime: "24:00" }, { endTime: "10:60" }, { endTime: "09:30" },
+  { endTime: "08:00" }, { startTime: "23:30", endTime: "00:30" },
+  { description: " " }, { date: "2026-02-30" },
+]) {
+  assert.equal(tasks.isValidSubjectEventDraft({ ...timedDraft, ...patch }), false, JSON.stringify(patch));
+}
+const timed = tasks.createSubjectEvent(subject.id, timedDraft, new Date(timestamp));
+assert.equal(timed.description, "Reunión de equipo");
+assert.equal(timed.startTime, "09:30");
+assert.equal(timed.endTime, "10:45");
+assert.equal(created.startTime, null);
+assert.equal(created.endTime, null);
+assert.equal(tasks.patchSubjectEvent(timed, { endTime: "09:00" }), null);
+assert.equal(tasks.patchSubjectEvent(timed, { startTime: "10:00", endTime: "11:00" }).startTime, "10:00");
+const converted = tasks.patchSubjectEvent(timed, { kind: "milestone" });
+assert.equal(converted.startTime, null);
+assert.equal(converted.endTime, null);
+assert.equal(tasks.patchSubjectEvent(created, { kind: "event" }), null);
+assert.equal(tasks.patchSubjectEvent(created, timedDraft).endTime, "10:45");
+
+const timedWorkspace = codec.normalizeWorkspaceData({
+  subjects: [subject], phases: [], tasks: [], subjectEvents: [
+    created, timed, { ...timed, id: "bad-time", endTime: "08:00" },
+    { ...timed, id: "missing-time", startTime: undefined },
+  ],
+});
+assert.deepEqual(timedWorkspace.subjectEvents.map((item) => item.id), [created.id, timed.id]);
+assert.deepEqual(codec.normalizeWorkspaceData(JSON.parse(JSON.stringify(timedWorkspace))), timedWorkspace);
+assert.equal(normalized.subjectEvents[0].startTime, null, "legacy deadlines remain untimed");
+assert.deepEqual(tasks.sortedSubjectEvents([
+  { ...timed, id: "later", startTime: "14:00", endTime: "15:00" },
+  { ...timed, id: "early" }, created,
+]).map((item) => item.id), [created.id, "early", "later"]);
+assert.deepEqual(tasks.removeSubjectFromWorkspace({ ...workspace, subjectEvents: [timed] }, subject.id, timestamp).subjectEvents, []);
+
+console.log("Subject events, milestones and deadlines tests passed.");

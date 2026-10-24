@@ -20,6 +20,7 @@ import {
   getHorizonLabel,
   getSubjectDescendantIds,
   getSubjectPath,
+  getSubjectEventLabel,
   getTaskAvailableDeliverables,
   getTaskAvailablePhases,
   isActiveTask,
@@ -109,7 +110,7 @@ const viewDescriptions: Record<ViewKey, string> = {
   upcoming: "El trabajo que se acerca en los próximos días.",
   waiting: "Tareas detenidas por una respuesta o condición externa.",
   completed: "El registro de lo que ya resolviste.",
-  calendar: "Todos tus hitos y vencimientos, ordenados en el tiempo.",
+  calendar: "Tus eventos, hitos y vencimientos, ordenados en el tiempo.",
   subjects: "Recorre tus asuntos como carpetas y abre cada nivel para ver su trabajo.",
   finances: "Ingresos, egresos, vencimientos y saldos de tus cuentas, sin mezclar monedas.",
   nutrition: "Planificá, registrá y prepará tus comidas desde un mismo cuaderno diario.",
@@ -1468,11 +1469,19 @@ function SubjectEditModal({
   );
 }
 
+const subjectEventTones: Record<SubjectEventKind, string> = {
+  milestone: "border-[#315f5a] bg-[#122b2a] text-[#63d3a5]",
+  deadline: "border-[#66532f] bg-[#282116] text-[#f2be67]",
+  event: "border-[#46678f] bg-[#142943] text-[#82afff]",
+};
+
 function SubjectEventFormModal({
   isOpen,
   event,
   defaultKind,
   subjectName,
+  subjects,
+  defaultDate,
   phases,
   onSave,
   onClose,
@@ -1481,11 +1490,16 @@ function SubjectEventFormModal({
   event: SubjectEvent | null;
   defaultKind: SubjectEventKind;
   subjectName: string;
+  subjects?: Subject[];
+  defaultDate?: string;
   phases: SubjectPhase[];
-  onSave: (draft: SubjectEventDraft) => void;
+  onSave: (draft: SubjectEventDraft, subjectId?: string) => void;
   onClose: () => void;
 }) {
   const [formError, setFormError] = useState<string | null>(null);
+  const [kind, setKind] = useState<SubjectEventKind>(event?.kind ?? defaultKind);
+  const [selectedSubjectId, setSelectedSubjectId] = useState(event?.subjectId ?? subjects?.[0]?.id ?? "");
+  const availablePhases = subjects ? phases.filter((phase) => phase.subjectId === selectedSubjectId) : phases;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1508,14 +1522,23 @@ function SubjectEventFormModal({
       description: String(data.get("description") ?? ""),
       date: String(data.get("date") ?? ""),
       phaseId: String(data.get("phaseId") ?? "") || null,
+      startTime: kind === "event" ? String(data.get("startTime") ?? "") : null,
+      endTime: kind === "event" ? String(data.get("endTime") ?? "") : null,
     };
 
     if (!isValidSubjectEventDraft(draft)) {
-      setFormError("Completa una descripción y selecciona una fecha válida.");
+      setFormError(kind === "event"
+        ? "Completa la descripción y la fecha. Indica horarios válidos, con la finalización posterior al inicio."
+        : "Completa una descripción y selecciona una fecha válida.");
       return;
     }
 
-    onSave(draft);
+    if (subjects && !subjects.some((subject) => subject.id === selectedSubjectId)) {
+      setFormError("Selecciona un asunto para el evento.");
+      return;
+    }
+
+    onSave(draft, selectedSubjectId || undefined);
     setFormError(null);
     onClose();
   }
@@ -1525,20 +1548,18 @@ function SubjectEventFormModal({
     onClose();
   }
 
-  const initialKind = event?.kind ?? defaultKind;
-
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[75] grid place-items-center bg-[#050812]/80 px-4 py-6 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="subject-event-form-title"
     >
-      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-[#315177] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.55)]">
+      <div className="max-h-[calc(100dvh-3rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-[#315177] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.55)]">
         <div className="flex items-center justify-between gap-4 border-b border-[#293852] px-4 py-4 sm:px-5">
           <div className="min-w-0">
             <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">
-              {event ? "Editar fecha clave" : "Nueva fecha clave"}
+              {event ? `Editar ${getSubjectEventLabel(kind).toLocaleLowerCase("es")}` : `Nuevo ${getSubjectEventLabel(kind).toLocaleLowerCase("es")}`}
             </p>
             <h3 id="subject-event-form-title" className="mt-1 truncate text-xl font-black text-[#eef4ff]">
               {subjectName}
@@ -1559,8 +1580,9 @@ function SubjectEventFormModal({
             <legend className="mb-1 text-xs font-black uppercase tracking-[0.12em] text-[#9aabc5]">
               Tipo
             </legend>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {([
+                ["event", "Evento", "Una actividad con horario"],
                 ["milestone", "Hito", "Un logro o punto de referencia"],
                 ["deadline", "Vencimiento", "Una entrega o fecha límite"],
               ] as const).map(([value, label, hint]) => (
@@ -1569,17 +1591,27 @@ function SubjectEventFormModal({
                     type="radio"
                     name="kind"
                     value={value}
-                    defaultChecked={initialKind === value}
+                    checked={kind === value}
+                    onChange={() => { setKind(value); setFormError(null); }}
                     className="peer sr-only"
                   />
-                  <span className="block rounded-xl border border-[#344562] bg-[#0d1422] p-3 transition peer-checked:border-[#82afff] peer-checked:bg-[#152a48] peer-focus-visible:ring-2 peer-focus-visible:ring-[#82afff]/40">
-                    <span className="block text-sm font-black text-[#eef4ff]">{label}</span>
-                    <span className="mt-1 block text-xs text-[#8fa0bd]">{hint}</span>
+                  <span className="block rounded-xl border border-[#344562] bg-[#0d1422] px-2 py-3 transition peer-checked:border-[#82afff] peer-checked:bg-[#152a48] peer-focus-visible:ring-2 peer-focus-visible:ring-[#82afff]/40 sm:p-3">
+                    <span className="block text-xs font-black text-[#eef4ff] sm:text-sm">{label}</span>
+                    <span className="mt-1 hidden text-xs text-[#8fa0bd] sm:block">{hint}</span>
                   </span>
                 </label>
               ))}
             </div>
           </fieldset>
+
+          {subjects ? (
+            <FieldLabel label="Asunto">
+              <select name="subjectId" value={selectedSubjectId} onChange={(changeEvent) => setSelectedSubjectId(changeEvent.target.value)} required className={controlClass}>
+                <option value="" disabled>Selecciona un asunto</option>
+                {subjects.map((subject) => <option key={subject.id} value={subject.id}>{getSubjectPath(subjects, subject.id)}</option>)}
+              </select>
+            </FieldLabel>
+          ) : null}
 
           <FieldLabel label="Descripción">
             <textarea
@@ -1598,25 +1630,37 @@ function SubjectEventFormModal({
             <input
               type="date"
               name="date"
-              defaultValue={event?.date ?? ""}
+              defaultValue={event?.date ?? defaultDate ?? ""}
               required
               className={controlClass}
             />
           </FieldLabel>
 
+          {kind === "event" ? (
+            <div className="grid grid-cols-2 gap-3">
+              <FieldLabel label="Hora de inicio">
+                <input type="time" name="startTime" defaultValue={event?.startTime ?? ""} required step={60} className={controlClass} />
+              </FieldLabel>
+              <FieldLabel label="Hora de finalización">
+                <input type="time" name="endTime" defaultValue={event?.endTime ?? ""} required step={60} className={controlClass} />
+              </FieldLabel>
+            </div>
+          ) : null}
+
           <FieldLabel label="Fase (opcional)">
             <select
+              key={selectedSubjectId}
               name="phaseId"
               defaultValue={event?.phaseId ?? ""}
               className={controlClass}
             >
               <option value="">Sin fase</option>
-              {phases.map((phase) => (
+              {availablePhases.map((phase) => (
                 <option key={phase.id} value={phase.id}>{phase.name}</option>
               ))}
             </select>
             <span className="mt-1 block text-xs font-medium leading-5 text-[#7185a3]">
-              {phases.length > 0
+              {availablePhases.length > 0
                 ? "La fecha aparecerá vinculada a esta etapa del asunto."
                 : "Este asunto todavía no tiene fases disponibles."}
             </span>
@@ -1633,12 +1677,13 @@ function SubjectEventFormModal({
               Cancelar
             </button>
             <button type="submit" className="h-10 rounded-lg border border-[#82afff] bg-[#82afff] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40">
-              {event ? "Guardar cambios" : initialKind === "milestone" ? "Crear hito" : "Crear vencimiento"}
+              {event ? "Guardar cambios" : `Crear ${getSubjectEventLabel(kind).toLocaleLowerCase("es")}`}
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1664,7 +1709,8 @@ function SubjectEventSection({
   const subjectEvents = sortedSubjectEvents(events, subject.id);
   const visibleEvents = subjectEvents.filter((event) => filter === "all" || event.kind === filter);
   const milestoneCount = subjectEvents.filter((event) => event.kind === "milestone").length;
-  const deadlineCount = subjectEvents.length - milestoneCount;
+  const deadlineCount = subjectEvents.filter((event) => event.kind === "deadline").length;
+  const eventCount = subjectEvents.filter((event) => event.kind === "event").length;
   const subjectPhases = sortedSubjectPhases(phases, subject.id);
 
   function openCreate(kind: SubjectEventKind) {
@@ -1684,9 +1730,12 @@ function SubjectEventSection({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#293852] bg-[#121c2d] px-4 py-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">Calendario del asunto</p>
-          <h4 className="mt-1 text-base font-black text-[#eef4ff]">Hitos y vencimientos</h4>
+          <h4 className="mt-1 text-base font-black text-[#eef4ff]">Eventos, hitos y vencimientos</h4>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => openCreate("event")} className="rounded-lg border border-[#46678f] bg-[#142943] px-3 py-2 text-sm font-black text-[#82afff] transition hover:bg-[#1b3555] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">
+            + Evento
+          </button>
           <button type="button" onClick={() => openCreate("milestone")} className="rounded-lg border border-[#315f5a] bg-[#122b2a] px-3 py-2 text-sm font-black text-[#63d3a5] transition hover:bg-[#183735] focus:outline-none focus:ring-2 focus:ring-[#63d3a5]/30">
             + Hito
           </button>
@@ -1699,6 +1748,7 @@ function SubjectEventSection({
       <div className="flex gap-2 overflow-x-auto border-b border-[#263852] px-4 py-3 hide-scrollbar" aria-label="Filtrar fechas clave">
         {([
           ["all", "Todas", subjectEvents.length],
+          ["event", "Eventos", eventCount],
           ["milestone", "Hitos", milestoneCount],
           ["deadline", "Vencimientos", deadlineCount],
         ] as const).map(([value, label, count]) => (
@@ -1720,18 +1770,17 @@ function SubjectEventSection({
           <p className="mt-3 text-sm font-bold text-[#c9d5e7]">
             {subjectEvents.length === 0 ? "Aún no hay fechas clave." : "No hay elementos de este tipo."}
           </p>
-          <p className="mt-1 text-xs text-[#8191ac]">Registra un logro importante o una fecha límite del asunto.</p>
+          <p className="mt-1 text-xs text-[#8191ac]">Registra un evento con horario, un logro importante o una fecha límite del asunto.</p>
         </div>
       ) : (
         <ol className="relative max-h-[520px] overflow-y-auto p-4 before:absolute before:bottom-8 before:left-[43px] before:top-8 before:w-px before:bg-[#315177]">
           {visibleEvents.map((event) => {
-            const isMilestone = event.kind === "milestone";
             const phase = event.phaseId
               ? subjectPhases.find((item) => item.id === event.phaseId) ?? null
               : null;
             return (
               <li key={event.id} className="relative grid grid-cols-[56px_minmax(0,1fr)] gap-3 py-2">
-                <time dateTime={event.date} className={`relative z-[1] flex h-12 w-12 flex-col items-center justify-center rounded-xl border font-mono ${isMilestone ? "border-[#315f5a] bg-[#122b2a] text-[#63d3a5]" : "border-[#66532f] bg-[#282116] text-[#f2be67]"}`}>
+                <time dateTime={event.date} className={`relative z-[1] flex h-12 w-12 flex-col items-center justify-center rounded-xl border font-mono ${subjectEventTones[event.kind]}`}>
                   <span className="text-[10px] font-black uppercase">{event.date.slice(5, 7)}</span>
                   <span className="text-base font-black leading-none">{event.date.slice(8, 10)}</span>
                 </time>
@@ -1739,10 +1788,11 @@ function SubjectEventSection({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ${isMilestone ? "border-[#315f5a] bg-[#122b2a] text-[#63d3a5]" : "border-[#66532f] bg-[#282116] text-[#f2be67]"}`}>
-                          {isMilestone ? "Hito" : "Vencimiento"}
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ${subjectEventTones[event.kind]}`}>
+                          {getSubjectEventLabel(event.kind)}
                         </span>
                         <time dateTime={event.date} className="font-mono text-xs font-bold text-[#91a0bb]">{formatDate(event.date)}</time>
+                        {event.kind === "event" ? <span className="font-mono text-xs font-bold text-[#82afff]">{event.startTime} – {event.endTime}</span> : null}
                         {phase ? (
                           <span className="rounded-full border border-[#3a5170] bg-[#152238] px-2 py-0.5 text-[10px] font-black text-[#a9bdd8]">
                             Fase · {phase.name}
@@ -1753,7 +1803,7 @@ function SubjectEventSection({
                     </div>
                     <div className="flex w-full justify-end gap-1.5 sm:w-auto">
                       <button type="button" onClick={() => openEdit(event)} className="h-8 rounded-md border border-[#344562] px-2.5 text-xs font-bold text-[#b9c5dd] transition hover:bg-[#182238]">Editar</button>
-                      <button type="button" onClick={() => { if (window.confirm(`¿Borrar este ${isMilestone ? "hito" : "vencimiento"}?`)) onDeleteEvent(event.id); }} className="h-8 rounded-md border border-[#55352f] px-2.5 text-xs font-bold text-[#ff9d88] transition hover:bg-[#2e1716]">Borrar</button>
+                      <button type="button" onClick={() => { if (window.confirm(`¿Borrar este ${getSubjectEventLabel(event.kind).toLocaleLowerCase("es")}?`)) onDeleteEvent(event.id); }} className="h-8 rounded-md border border-[#55352f] px-2.5 text-xs font-bold text-[#ff9d88] transition hover:bg-[#2e1716]">Borrar</button>
                     </div>
                   </div>
                 </article>
@@ -1763,7 +1813,7 @@ function SubjectEventSection({
         </ol>
       )}
 
-      <SubjectEventFormModal
+      {isFormOpen ? <SubjectEventFormModal
         key={editingEvent?.id ?? `new-${defaultKind}`}
         isOpen={isFormOpen}
         event={editingEvent}
@@ -1775,7 +1825,7 @@ function SubjectEventSection({
           else onAddEvent(subject.id, draft);
         }}
         onClose={() => setIsFormOpen(false)}
-      />
+      /> : null}
     </section>
   );
 }
@@ -1812,11 +1862,15 @@ function CalendarEventCard({
   subjects,
   phases,
   onOpenSubject,
+  onEdit,
+  onDelete,
 }: {
   event: SubjectEvent;
   subjects: Subject[];
   phases: SubjectPhase[];
   onOpenSubject: (subjectId: string) => void;
+  onEdit: (event: SubjectEvent) => void;
+  onDelete: (eventId: string) => void;
 }) {
   const isMilestone = event.kind === "milestone";
   const subjectPath = getSubjectPath(subjects, event.subjectId);
@@ -1826,28 +1880,25 @@ function CalendarEventCard({
     <article className="rounded-xl border border-[#2d405d] bg-[#0c1726] p-3 transition hover:border-[#466486]">
       <div className="flex items-start gap-3">
         <span
-          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm font-black ${
-            isMilestone
-              ? "border-[#315f5a] bg-[#122b2a] text-[#63d3a5]"
-              : "border-[#66532f] bg-[#282116] text-[#f2be67]"
-          }`}
+          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm font-black ${subjectEventTones[event.kind]}`}
           aria-hidden="true"
         >
-          {isMilestone ? "◇" : "!"}
+          {event.kind === "event" ? "◷" : isMilestone ? "◇" : "!"}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`text-[10px] font-black uppercase tracking-[0.12em] ${
-                isMilestone ? "text-[#63d3a5]" : "text-[#f2be67]"
+                event.kind === "event" ? "text-[#82afff]" : isMilestone ? "text-[#63d3a5]" : "text-[#f2be67]"
               }`}
             >
-              {isMilestone ? "Hito" : "Vencimiento"}
+              {getSubjectEventLabel(event.kind)}
             </span>
             <time dateTime={event.date} className="font-mono text-[10px] font-bold text-[#8193af]">
               {formatDate(event.date)}
             </time>
           </div>
+          {event.kind === "event" ? <p className="mt-2 font-mono text-xs font-bold text-[#82afff]">{event.startTime} – {event.endTime}</p> : null}
           <p className="mt-1 text-sm font-bold leading-5 text-[#e8eef8]">{event.description}</p>
           {phase ? (
             <p className="mt-1.5 truncate text-[11px] font-bold text-[#9bacca]">
@@ -1861,6 +1912,10 @@ function CalendarEventCard({
           >
             {subjectPath || "Abrir asunto"} →
           </button>
+          <div className="mt-3 flex gap-2">
+            <button type="button" onClick={() => onEdit(event)} className="rounded-md border border-[#344562] px-2.5 py-1.5 text-xs font-bold text-[#b9c5dd] hover:bg-[#182238]">Editar</button>
+            <button type="button" onClick={() => { if (window.confirm(`¿Borrar este ${getSubjectEventLabel(event.kind).toLocaleLowerCase("es")}?`)) onDelete(event.id); }} className="rounded-md border border-[#55352f] px-2.5 py-1.5 text-xs font-bold text-[#ff9d88] hover:bg-[#2e1716]">Borrar</button>
+          </div>
         </div>
       </div>
     </article>
@@ -1874,6 +1929,9 @@ function CalendarView({
   today,
   searchQuery,
   onOpenSubject,
+  onAddEvent,
+  onPatchEvent,
+  onDeleteEvent,
 }: {
   events: SubjectEvent[];
   subjects: Subject[];
@@ -1881,10 +1939,15 @@ function CalendarView({
   today: string;
   searchQuery: string;
   onOpenSubject: (subjectId: string) => void;
+  onAddEvent: (subjectId: string, draft: SubjectEventDraft) => void;
+  onPatchEvent: (eventId: string, patch: Partial<SubjectEventDraft>) => void;
+  onDeleteEvent: (eventId: string) => void;
 }) {
   const [monthKey, setMonthKey] = useState(today.slice(0, 7));
   const [selectedDate, setSelectedDate] = useState(today);
   const [filter, setFilter] = useState<"all" | SubjectEventKind>("all");
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<SubjectEvent | null>(null);
   const query = searchQuery.trim().toLocaleLowerCase("es");
   const matchingEvents = useMemo(
     () =>
@@ -1923,7 +1986,13 @@ function CalendarView({
   const selectedEvents = eventsByDate.get(selectedDate) ?? [];
   const upcomingEvents = matchingEvents.filter((event) => compareDateOnly(event.date, today) >= 0).slice(0, 6);
   const milestoneCount = events.filter((event) => event.kind === "milestone").length;
-  const deadlineCount = events.length - milestoneCount;
+  const deadlineCount = events.filter((event) => event.kind === "deadline").length;
+  const eventCount = events.filter((event) => event.kind === "event").length;
+
+  function openEdit(event: SubjectEvent) {
+    setEditingEvent(event);
+    setIsFormOpen(true);
+  }
 
   function moveMonth(offset: number) {
     const [year, month] = monthKey.split("-").map(Number);
@@ -1955,7 +2024,8 @@ function CalendarView({
               {monthLabel(monthKey)}
             </h3>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" disabled={subjects.length === 0} onClick={() => { setEditingEvent(null); setIsFormOpen(true); }} className="h-10 rounded-xl border border-[#82afff] bg-[#82afff] px-3 text-sm font-black text-[#07111f] transition hover:bg-[#a8c7ff] disabled:cursor-not-allowed disabled:opacity-40">+ Evento</button>
             <button type="button" onClick={() => moveMonth(-1)} aria-label="Mes anterior" className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#344d6c] text-lg font-black text-[#afbed3] transition hover:bg-[#172a43] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">←</button>
             <button type="button" onClick={goToToday} className="h-10 rounded-xl border border-[#46678f] bg-[#142943] px-3 text-sm font-black text-[#c9dcf8] transition hover:bg-[#1b3555] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">Hoy</button>
             <button type="button" onClick={() => moveMonth(1)} aria-label="Mes siguiente" className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#344d6c] text-lg font-black text-[#afbed3] transition hover:bg-[#172a43] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">→</button>
@@ -1965,6 +2035,7 @@ function CalendarView({
         <div className="flex gap-2 overflow-x-auto border-b border-[#263852] px-4 py-3 hide-scrollbar sm:px-5" aria-label="Filtrar calendario">
           {([
             ["all", "Todo", events.length],
+            ["event", "Eventos", eventCount],
             ["milestone", "Hitos", milestoneCount],
             ["deadline", "Vencimientos", deadlineCount],
           ] as const).map(([value, label, count]) => (
@@ -2015,13 +2086,13 @@ function CalendarView({
                 </span>
                 <span className="mt-1.5 flex flex-wrap gap-1 sm:hidden" aria-hidden="true">
                   {dayEvents.slice(0, 4).map((event) => (
-                    <span key={event.id} className={`h-1.5 w-1.5 rounded-full ${event.kind === "milestone" ? "bg-[#63d3a5]" : "bg-[#f2be67]"}`} />
+                    <span key={event.id} className={`h-1.5 w-1.5 rounded-full ${event.kind === "event" ? "bg-[#82afff]" : event.kind === "milestone" ? "bg-[#63d3a5]" : "bg-[#f2be67]"}`} />
                   ))}
                 </span>
                 <span className="mt-1.5 hidden space-y-1 sm:block">
                   {dayEvents.slice(0, 2).map((event) => (
-                    <span key={event.id} className={`block truncate rounded-md border-l-2 px-1.5 py-1 text-[10px] font-bold ${event.kind === "milestone" ? "border-[#63d3a5] bg-[#12302d] text-[#9de7c8]" : "border-[#f2be67] bg-[#2c2417] text-[#f4cf8d]"}`}>
-                      {event.description}
+                    <span key={event.id} className={`block truncate rounded-md border-l-2 px-1.5 py-1 text-[10px] font-bold ${subjectEventTones[event.kind]}`}>
+                      {event.kind === "event" ? `${event.startTime} ` : ""}{event.description}
                     </span>
                   ))}
                   {dayEvents.length > 2 ? <span className="block pl-1 font-mono text-[9px] font-black text-[#8da0bb]">+{dayEvents.length - 2} más</span> : null}
@@ -2040,11 +2111,11 @@ function CalendarView({
           </div>
           <div className="space-y-2 p-3">
             {selectedEvents.length > 0 ? (
-              selectedEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onOpenSubject={onOpenSubject} />)
+              selectedEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onOpenSubject={onOpenSubject} onEdit={openEdit} onDelete={onDeleteEvent} />)
             ) : (
               <div className="rounded-xl border border-dashed border-[#344d6c] px-4 py-8 text-center">
                 <p className="text-sm font-bold text-[#b8c5d8]">Día libre de fechas clave.</p>
-                <p className="mt-1 text-xs leading-5 text-[#7f91ad]">Selecciona otro día o abre un asunto para registrar una fecha.</p>
+                <p className="mt-1 text-xs leading-5 text-[#7f91ad]">{subjects.length ? "Usa + Evento para registrar una actividad en este día." : "Crea un asunto para comenzar a registrar eventos."}</p>
               </div>
             )}
           </div>
@@ -2057,13 +2128,31 @@ function CalendarView({
           </div>
           <div className="space-y-2 p-3">
             {upcomingEvents.length > 0 ? (
-              upcomingEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onOpenSubject={onOpenSubject} />)
+              upcomingEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onOpenSubject={onOpenSubject} onEdit={openEdit} onDelete={onDeleteEvent} />)
             ) : (
               <p className="px-2 py-6 text-center text-sm text-[#8191ac]">No hay próximas fechas con este filtro.</p>
             )}
           </div>
         </section>
       </aside>
+      {isFormOpen ? (
+        <SubjectEventFormModal
+          isOpen
+          event={editingEvent}
+          defaultKind="event"
+          defaultDate={selectedDate}
+          subjectName={editingEvent ? getSubjectPath(subjects, editingEvent.subjectId) : "Calendario"}
+          subjects={editingEvent ? undefined : subjects}
+          phases={editingEvent ? sortedSubjectPhases(phases, editingEvent.subjectId) : phases}
+          onSave={(draft, subjectId) => {
+            if (editingEvent) onPatchEvent(editingEvent.id, draft);
+            else if (subjectId) onAddEvent(subjectId, draft);
+            setFilter("all");
+            selectDate(draft.date);
+          }}
+          onClose={() => setIsFormOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -3326,6 +3415,9 @@ export default function TaskManager() {
                   phases={workspace.phases}
                   today={workspace.today}
                   searchQuery={searchQuery}
+                  onAddEvent={workspace.addSubjectEvent}
+                  onPatchEvent={workspace.updateSubjectEvent}
+                  onDeleteEvent={workspace.deleteSubjectEvent}
                   onOpenSubject={(subjectId) => {
                     setSelectedSubjectId(subjectId);
                     setActiveView("subjects");

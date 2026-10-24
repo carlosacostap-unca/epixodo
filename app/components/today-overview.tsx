@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { TaskWorkspace } from "../hooks/use-task-workspace";
 import { formatMoney } from "../lib/finance";
 import { getMealTypeLabel, getPlanItemLabel } from "../lib/nutrition";
-import { compareDateOnly, getSubjectPath } from "../lib/tasks";
+import { compareDateOnly, getSubjectPath, getSubjectEventLabel, sortedSubjectEvents } from "../lib/tasks";
 
 type TodayModule = "calendar" | "finances" | "nutrition" | "locations" | "expectations";
 
@@ -85,7 +85,7 @@ export default function TodayOverview({
       .filter((entry) => entry.date === workspace.today && entry.planItemId)
       .map((entry) => entry.planItemId),
   );
-  const events = workspace.subjectEvents.filter((event) =>
+  const events = sortedSubjectEvents(workspace.subjectEvents).filter((event) =>
     event.date === workspace.today && matchesQuery(searchQuery, event.description, getSubjectPath(workspace.subjects, event.subjectId)),
   );
   const payments = workspace.financeDuePayments.filter((payment) => {
@@ -131,8 +131,8 @@ export default function TodayOverview({
 
       <div className="grid gap-5 xl:grid-cols-2">
         <section className="overflow-hidden rounded-2xl border border-[#4e4933] bg-[#171a22]">
-          <SectionHeader eyebrow="Asuntos" title="Hitos y vencimientos" count={events.length} tone="text-[#f6c177]" onOpen={() => onNavigate("calendar")} />
-          {events.length ? <div className="divide-y divide-[#353a43]">{events.map((event) => <AgendaCard key={event.id}><div><p className="text-[10px] font-black uppercase tracking-[0.13em] text-[#caa35d]">{event.kind === "deadline" ? "Vencimiento" : "Hito"}</p><button type="button" onClick={() => onOpenSubject(event.subjectId)} className="mt-1 text-left font-black text-[#f4f0e7] hover:text-[#f6c177]">{event.description}</button><p className="mt-1 text-xs text-[#918b7b]">{getSubjectPath(workspace.subjects, event.subjectId)}</p></div></AgendaCard>)}</div> : <EmptySection>No hay hitos ni vencimientos hoy.</EmptySection>}
+          <SectionHeader eyebrow="Asuntos" title="Eventos, hitos y vencimientos" count={events.length} tone="text-[#f6c177]" onOpen={() => onNavigate("calendar")} />
+          {events.length ? <div className="divide-y divide-[#353a43]">{events.map((event) => <AgendaCard key={event.id}><div><p className="text-[10px] font-black uppercase tracking-[0.13em] text-[#caa35d]">{getSubjectEventLabel(event.kind)}</p>{event.kind === "event" ? <p className="mt-1 font-mono text-xs font-bold text-[#82afff]">{event.startTime} – {event.endTime}</p> : null}<button type="button" onClick={() => onOpenSubject(event.subjectId)} className="mt-1 text-left font-black text-[#f4f0e7] hover:text-[#f6c177]">{event.description}</button><p className="mt-1 text-xs text-[#918b7b]">{getSubjectPath(workspace.subjects, event.subjectId)}</p></div></AgendaCard>)}</div> : <EmptySection>No hay eventos, hitos ni vencimientos hoy.</EmptySection>}
         </section>
 
         <section className="overflow-hidden rounded-2xl border border-[#5b3d3b] bg-[#1d171b]">

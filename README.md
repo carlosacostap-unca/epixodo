@@ -33,9 +33,17 @@ remote schema with:
 
 ```bash
 npm run schema:deliverables
+npm run schema:subject-events
 npm run schema:finance-due-payments
 npm run schema:normalized:validate
 ```
+
+Los calendarios permiten registrar eventos con descripción, fecha y horarios de
+inicio y finalización, además de hitos y vencimientos. El final debe ser posterior
+al inicio dentro del mismo día. Los eventos se crean desde «+ Evento» en el
+calendario general o en el calendario de un asunto y aparecen también en Hoy.
+`schema:subject-events` agrega el tipo `event` y los campos de horario opcionales
+en PocketBase, conservando los hitos y vencimientos existentes.
 
 Normalized reads and writes are enabled by default after the verified migration.
 The legacy `workspaces/default` document remains available for rollback. To return

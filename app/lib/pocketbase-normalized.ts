@@ -264,6 +264,8 @@ export async function getNormalizedWorkspace(
       kind: text(record, "kind") as WorkspaceData["subjectEvents"][number]["kind"],
       description: text(record, "description"),
       date: text(record, "event_date"),
+      startTime: text(record, "start_time") || null,
+      endTime: text(record, "end_time") || null,
       createdAt: clientCreatedAt(record),
       updatedAt: clientUpdatedAt(record),
     })),
@@ -610,6 +612,8 @@ export async function saveNormalizedWorkspace(
     kind: event.kind,
     description: event.description,
     event_date: event.date,
+    start_time: event.startTime ?? "",
+    end_time: event.endTime ?? "",
     ...stamps(event),
   })));
   remember(collections.events, result.stale);

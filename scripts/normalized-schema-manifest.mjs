@@ -26,7 +26,7 @@ export const normalizedSchema = {
   subjects: { fields: fields({ name: text(true), horizon: select(true, ["closure", "working", "short", "medium", "long", "waiting_response", "up_to_date", "none"]), parent: relation("subjects", false) }) },
   subject_deliverables: { fields: fields({ subject: relation("subjects"), name: text(true), description: editor(true) }) },
   subject_phases: { fields: fields({ subject: relation("subjects"), name: text(true), planned_start: text(), executed_start: text(), planned_end: text(), executed_end: text(), position: number(false) }) },
-  subject_events: { fields: fields({ subject: relation("subjects"), phase: relation("subject_phases", false), kind: select(), description: text(true), event_date: text(true) }) },
+  subject_events: { fields: fields({ subject: relation("subjects"), phase: relation("subject_phases", false), kind: select(true, ["milestone", "deadline", "event"]), description: text(true), event_date: text(true), start_time: text(), end_time: text() }) },
   tasks: { fields: fields({ title: text(true), notes: editor(), status: select(), phase: relation("subject_phases", false), deliverable: relation("subject_deliverables", false), parent: relation("tasks", false), do_on: text(), due_on: text(), priority: select(), completed_at: date() }) },
   task_subjects: { fields: fields({ task: relation("tasks"), subject: relation("subjects") }) },
   finance_accounts: { fields: fields({ name: text(true), account_type: select(), currency: text(true), opening_balance_minor: number() }) },

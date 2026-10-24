@@ -2,6 +2,7 @@ import {
   emptyWorkspace,
   isSubjectEventKind,
   isValidDateOnly,
+  isValidEventTimeRange,
   normalizeTaskAiSuggestion,
   type Subject,
   type SubjectDeliverable,
@@ -214,6 +215,7 @@ function toSubjectEvent(value: unknown): SubjectEvent | null {
     typeof value.description !== "string" ||
     !value.description.trim() ||
     !isValidDateOnly(value.date) ||
+    (value.kind === "event" && !isValidEventTimeRange(value.startTime, value.endTime)) ||
     typeof value.createdAt !== "string" ||
     typeof value.updatedAt !== "string"
   ) {
@@ -227,6 +229,8 @@ function toSubjectEvent(value: unknown): SubjectEvent | null {
     kind: value.kind,
     description: repairMojibake(value.description.trim()),
     date: value.date,
+    startTime: value.kind === "event" ? value.startTime as string : null,
+    endTime: value.kind === "event" ? value.endTime as string : null,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };

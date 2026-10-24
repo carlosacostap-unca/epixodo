@@ -13,6 +13,7 @@
     "schema:pocketbase": "node scripts/ensure_workspaces_collection.mjs",
     "schema:companion": "node scripts/ensure-companion-schema.mjs",
     "schema:deliverables": "node scripts/ensure-deliverables-schema.mjs",
+    "schema:subject-events": "node scripts/ensure-subject-events-schema.mjs",
     "schema:finance-due-payments": "node scripts/ensure-finance-due-payments-schema.mjs",
     "schema:normalized:validate": "node scripts/validate-normalized-schema.mjs",
     "test:normalized-workspace": "node scripts/smoke-normalized-workspace.mjs",
