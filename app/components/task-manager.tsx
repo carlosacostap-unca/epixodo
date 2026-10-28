@@ -30,6 +30,7 @@ import {
   sortedSubjectPhases,
   sortedSubjectEvents,
   sortedSubjectDeliverables,
+  sortedTasks,
   taskPriorities,
   taskStatuses,
   taskTreeItems,
@@ -111,7 +112,7 @@ const viewDescriptions: Record<ViewKey, string> = {
   waiting: "Tareas detenidas por una respuesta o condición externa.",
   completed: "El registro de lo que ya resolviste.",
   calendar: "Tus eventos, hitos y vencimientos, ordenados en el tiempo.",
-  subjects: "Recorre tus asuntos como carpetas y abre cada nivel para ver su trabajo.",
+  subjects: "Explora tus asuntos por carpetas u horizonte y abre su detalle para gestionar las tareas.",
   finances: "Ingresos, egresos, vencimientos y saldos de tus cuentas, sin mezclar monedas.",
   nutrition: "Planificá, registrá y prepará tus comidas desde un mismo cuaderno diario.",
   locations: "Planificá dónde debés estar y registrá tu recorrido real, día a día y por horario.",
@@ -2842,6 +2843,7 @@ function SubjectHorizonBoard({
                         key={subject.id}
                         type="button"
                         draggable
+                        aria-label={`Abrir detalle de ${subject.name}`}
                         onClick={() => onSelectSubject(subject.id)}
                         onDragStart={(event) => {
                           setDraggingSubjectId(subject.id);
@@ -2860,6 +2862,9 @@ function SubjectHorizonBoard({
                         </span>
                         <span className="mt-1 block truncate text-xs text-[#8fa0bd]">
                           {getSubjectPath(subjects, subject.parentSubjectId)}
+                        </span>
+                        <span className="mt-2 block text-xs font-bold text-[#82afff]">
+                          Ver tareas y detalle →
                         </span>
                       </button>
                     );
@@ -2888,6 +2893,7 @@ export default function TaskManager() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [subjectViewMode, setSubjectViewMode] = useState<SubjectViewMode>("folders");
   const searchRef = useRef<HTMLInputElement>(null);
+  const subjectDetailRef = useRef<HTMLDivElement>(null);
 
   const activeTasks = workspace.tasks.filter(isActiveTask);
   const selectedSubject = selectedSubjectId
@@ -2896,6 +2902,13 @@ export default function TaskManager() {
   const selectedTask = selectedTaskId
     ? (workspace.tasks.find((task) => task.id === selectedTaskId) ?? null)
     : null;
+
+  useEffect(() => {
+    if (activeView === "subjects" && subjectViewMode === "horizon" && selectedSubjectId) {
+      subjectDetailRef.current?.focus({ preventScroll: true });
+      subjectDetailRef.current?.scrollIntoView({ block: "start" });
+    }
+  }, [activeView, selectedSubjectId, subjectViewMode]);
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -2988,7 +3001,13 @@ export default function TaskManager() {
     }
 
     if (selectedSubjectId) {
-      return workspace.getTasksForSubject(selectedSubjectId);
+      const subjectIds = new Set([
+        selectedSubjectId,
+        ...getSubjectDescendantIds(workspace.subjects, selectedSubjectId),
+      ]);
+      return sortedTasks(workspace.tasks.filter((task) =>
+        task.subjectIds.some((subjectId) => subjectIds.has(subjectId)),
+      ));
     }
 
     return [];
@@ -3204,7 +3223,11 @@ export default function TaskManager() {
                           <button
                             key={item.key}
                             type="button"
-                            onClick={() => setSubjectViewMode(item.key)}
+                            onClick={() => {
+                              setSubjectViewMode(item.key);
+                              if (item.key === "horizon") setSelectedSubjectId(null);
+                            }}
+                            aria-pressed={subjectViewMode === item.key}
                             className={`h-9 px-3 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 ${
                               subjectViewMode === item.key
                                 ? "rounded-lg bg-[#82afff] text-[#07111f] shadow-[0_5px_16px_rgba(130,175,255,0.18)]"
@@ -3291,122 +3314,143 @@ export default function TaskManager() {
               ) : activeView === "finances" ? (
                 <FinanceView workspace={workspace} searchQuery={searchQuery} />
               ) : activeView === "subjects" ? (
-                <div className="space-y-6">
-                  <div className="rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.14)] sm:p-5">
-                    <div className="mb-4">
-                      <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Explorador</p>
-                      <h3 className="mt-1 text-lg font-black text-[#e9f0fb]">Carpetas de asuntos</h3>
-                    </div>
-                    {subjectViewMode === "folders" ? (
-                      <SubjectFolderBrowser
-                        subjects={workspace.subjects}
-                        tasks={workspace.tasks}
-                        selectedSubjectId={selectedSubjectId}
-                        onSelectSubject={(subjectId) => {
-                          setSelectedSubjectId(subjectId);
-                          setActiveView("subjects");
-                        }}
-                        onAddSubject={(parentSubjectId) => {
-                          setNewSubjectParentId(parentSubjectId);
-                          setIsSubjectModalOpen(true);
-                        }}
-                      />
-                    ) : (
-                      <SubjectHorizonBoard
-                        subjects={workspace.subjects}
-                        selectedSubjectId={selectedSubjectId}
-                        onSelectSubject={(subjectId) => {
-                          setSelectedSubjectId(subjectId);
-                          setActiveView("subjects");
-                        }}
-                        onSetSubjectHorizon={workspace.setSubjectHorizon}
-                      />
-                    )}
-                  </div>
-
-                  <div className="min-w-0 space-y-6">
-                    {selectedSubject ? (
-                      <>
-                        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#315177] bg-[linear-gradient(135deg,#10233a,#0d1a2a)] px-4 py-4 shadow-[0_14px_35px_rgba(0,0,0,0.14)] sm:px-5">
-                          <div className="min-w-0">
-                            <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">
-                              Asunto activo
-                            </p>
-                            <h3 className="mt-1 truncate text-xl font-black tracking-[-0.02em] text-[#f4f7fc]">
-                              {getSubjectPath(workspace.subjects, selectedSubject.id)}
-                            </h3>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setIsSubjectEditModalOpen(true)}
-                              className="rounded-xl border border-[#3a5578] px-4 py-2.5 text-sm font-bold text-[#c1cee2] transition hover:bg-[#182a42] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
-                            >
-                              Editar asunto
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setIsTaskModalOpen(true)}
-                              className="rounded-xl border border-[#82afff] bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] transition hover:-translate-y-0.5 hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40"
-                            >
-                              Nueva tarea
-                            </button>
-                          </div>
-                        </div>
-                        <SubjectDeliverableSection
-                          subject={selectedSubject}
-                          deliverables={workspace.deliverables}
+                <div ref={subjectDetailRef} tabIndex={-1} className="scroll-mt-24 space-y-6 outline-none">
+                  {subjectViewMode === "horizon" && selectedSubject ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubjectId(null)}
+                      className="rounded-xl border border-[#344d6c] px-4 py-2.5 text-sm font-bold text-[#afbed3] transition hover:bg-[#16283f] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                    >
+                      ← Volver al horizonte
+                    </button>
+                  ) : null}
+                  {subjectViewMode === "folders" || !selectedSubject ? (
+                    <div className="rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.14)] sm:p-5">
+                      <div className="mb-4">
+                        <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Explorador</p>
+                        <h3 className="mt-1 text-lg font-black text-[#e9f0fb]">{subjectViewMode === "folders" ? "Carpetas de asuntos" : "Asuntos por horizonte"}</h3>
+                      </div>
+                      {subjectViewMode === "folders" ? (
+                        <SubjectFolderBrowser
+                          subjects={workspace.subjects}
                           tasks={workspace.tasks}
-                          onAddDeliverable={workspace.addDeliverable}
-                          onUpdateDeliverable={workspace.updateDeliverable}
-                          onDeleteDeliverable={workspace.deleteDeliverable}
-                          onOpenTask={setSelectedTaskId}
-                          onCreateTask={(deliverableId) => {
-                            setNewTaskDeliverableId(deliverableId);
-                            setIsTaskModalOpen(true);
+                          selectedSubjectId={selectedSubjectId}
+                          onSelectSubject={(subjectId) => {
+                            setSelectedSubjectId(subjectId);
+                            setActiveView("subjects");
+                          }}
+                          onAddSubject={(parentSubjectId) => {
+                            setNewSubjectParentId(parentSubjectId);
+                            setIsSubjectModalOpen(true);
                           }}
                         />
-                        <SubjectEventSection
-                          subject={selectedSubject}
-                          events={workspace.subjectEvents}
-                          phases={workspace.phases}
-                          onAddEvent={workspace.addSubjectEvent}
-                          onPatchEvent={workspace.updateSubjectEvent}
-                          onDeleteEvent={workspace.deleteSubjectEvent}
-                        />
-                        <SubjectPhaseSection
-                          subject={selectedSubject}
-                          phases={workspace.phases}
-                          tasks={workspace.tasks}
-                          onAddPhase={workspace.addPhase}
-                          onPatchPhase={workspace.patchPhase}
-                          onMovePhase={workspace.movePhase}
-                          onDeletePhase={workspace.deletePhase}
-                        />
-                      </>
-                    ) : null}
-                    <div className="space-y-3">
-                      {filteredTaskItems.length === 0 ? (
-                        <TaskEmptyState label={emptyLabel} hint={selectedSubject ? "Crea una tarea para empezar a mover este asunto." : "Selecciona un asunto de la lista para ver su trabajo."} />
                       ) : (
-                        filteredTaskItems.map(({ task, depth }) => (
-                          <TaskRow
-                            key={task.id}
-                            task={task}
-                            subjects={workspace.subjects}
-                            phases={workspace.phases}
-                            depth={depth}
-                            today={workspace.today}
-                            onStatus={workspace.setTaskStatus}
-                            onOpen={setSelectedTaskId}
-                            accounts={workspace.financeAccounts}
-                            onApplySuggestion={applySuggestion}
-                            onOpenModule={setActiveView}
-                          />
-                        ))
+                        <SubjectHorizonBoard
+                          subjects={workspace.subjects}
+                          selectedSubjectId={selectedSubjectId}
+                          onSelectSubject={(subjectId) => {
+                            setSelectedSubjectId(subjectId);
+                            setActiveView("subjects");
+                          }}
+                          onSetSubjectHorizon={workspace.setSubjectHorizon}
+                        />
                       )}
                     </div>
-                  </div>
+                  ) : null}
+
+                  {subjectViewMode === "folders" || selectedSubject ? (
+                    <div className="min-w-0 space-y-6">
+                      {selectedSubject ? (
+                        <>
+                          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#315177] bg-[linear-gradient(135deg,#10233a,#0d1a2a)] px-4 py-4 shadow-[0_14px_35px_rgba(0,0,0,0.14)] sm:px-5">
+                            <div className="min-w-0">
+                              <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">
+                                Detalle del asunto
+                              </p>
+                              <h3 className="mt-1 truncate text-xl font-black tracking-[-0.02em] text-[#f4f7fc]">
+                                {getSubjectPath(workspace.subjects, selectedSubject.id)}
+                              </h3>
+                              <p className="mt-2 text-sm text-[#aebbd0]">
+                                {getHorizonLabel(selectedSubject.horizon)} · Pendientes: {visibleTasks.filter(isActiveTask).length} · Completadas: {visibleTasks.filter((task) => task.status === "completed").length}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsSubjectEditModalOpen(true)}
+                                className="rounded-xl border border-[#3a5578] px-4 py-2.5 text-sm font-bold text-[#c1cee2] transition hover:bg-[#182a42] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                              >
+                                Editar asunto
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setIsTaskModalOpen(true)}
+                                className="rounded-xl border border-[#82afff] bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] transition hover:-translate-y-0.5 hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40"
+                              >
+                                Nueva tarea
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+                      <section aria-label="Tareas del asunto" className="space-y-3">
+                        {selectedSubject ? <h4 className="text-base font-black text-[#e9f0fb]">Tareas del asunto</h4> : null}
+                        {filteredTaskItems.length === 0 ? (
+                          <TaskEmptyState label={emptyLabel} hint={hasSearch ? "Prueba con otro término o limpia la búsqueda." : selectedSubject ? "Crea una tarea para empezar a mover este asunto." : "Selecciona un asunto de la lista para ver su trabajo."} />
+                        ) : (
+                          filteredTaskItems.map(({ task, depth }) => (
+                            <TaskRow
+                              key={task.id}
+                              task={task}
+                              subjects={workspace.subjects}
+                              phases={workspace.phases}
+                              depth={depth}
+                              today={workspace.today}
+                              onStatus={workspace.setTaskStatus}
+                              onOpen={setSelectedTaskId}
+                              accounts={workspace.financeAccounts}
+                              onApplySuggestion={applySuggestion}
+                              onOpenModule={setActiveView}
+                            />
+                          ))
+                        )}
+                      </section>
+                      {selectedSubject ? (
+                        <>
+                          <SubjectDeliverableSection
+                            subject={selectedSubject}
+                            deliverables={workspace.deliverables}
+                            tasks={workspace.tasks}
+                            onAddDeliverable={workspace.addDeliverable}
+                            onUpdateDeliverable={workspace.updateDeliverable}
+                            onDeleteDeliverable={workspace.deleteDeliverable}
+                            onOpenTask={setSelectedTaskId}
+                            onCreateTask={(deliverableId) => {
+                              setNewTaskDeliverableId(deliverableId);
+                              setIsTaskModalOpen(true);
+                            }}
+                          />
+                          <SubjectEventSection
+                            subject={selectedSubject}
+                            events={workspace.subjectEvents}
+                            phases={workspace.phases}
+                            onAddEvent={workspace.addSubjectEvent}
+                            onPatchEvent={workspace.updateSubjectEvent}
+                            onDeleteEvent={workspace.deleteSubjectEvent}
+                          />
+                          <SubjectPhaseSection
+                            subject={selectedSubject}
+                            phases={workspace.phases}
+                            tasks={workspace.tasks}
+                            onAddPhase={workspace.addPhase}
+                            onPatchPhase={workspace.patchPhase}
+                            onMovePhase={workspace.movePhase}
+                            onDeletePhase={workspace.deletePhase}
+                          />
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : activeView === "calendar" ? (
                 <CalendarView
