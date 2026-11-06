@@ -54,3 +54,33 @@ export function idealDayGoalMatchesQuery(goal: IdealDayGoal, query: string): boo
   return `${goal.title} ${goal.notes}`.toLocaleLowerCase("es")
     .includes(query.trim().toLocaleLowerCase("es"));
 }
+
+export function getPreviousIdealDayDates(goals: IdealDayGoal[], beforeDate: DateOnly): DateOnly[] {
+  return [...new Set(goals.filter((goal) => goal.date < beforeDate).map((goal) => goal.date))]
+    .sort((a, b) => b.localeCompare(a));
+}
+
+function goalContentKey(goal: Pick<IdealDayGoal, "title" | "notes">): string {
+  return JSON.stringify([goal.title.trim().toLocaleLowerCase("es"), goal.notes.trim()]);
+}
+
+export function isIdealDayGoalAlreadyAdded(goal: IdealDayGoal, goals: IdealDayGoal[], date: DateOnly): boolean {
+  const key = goalContentKey(goal);
+  return goals.some((item) => item.date === date && goalContentKey(item) === key);
+}
+
+export function copyIdealDayGoals(goals: IdealDayGoal[], goalIds: string[], targetDate: DateOnly): IdealDayGoal[] {
+  if (!isValidDateOnly(targetDate)) return [];
+  const selectedIds = new Set(goalIds);
+  const existing = new Set(goals.filter((goal) => goal.date === targetDate).map(goalContentKey));
+  const copies: IdealDayGoal[] = [];
+
+  for (const goal of goals) {
+    if (!selectedIds.has(goal.id) || goal.date >= targetDate || existing.has(goalContentKey(goal))) continue;
+    const copy = createIdealDayGoal({ date: targetDate, title: goal.title, notes: goal.notes });
+    if (!copy) continue;
+    copies.push(copy);
+    existing.add(goalContentKey(goal));
+  }
+  return copies;
+}

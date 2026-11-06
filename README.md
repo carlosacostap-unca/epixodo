@@ -41,7 +41,10 @@ npm run schema:normalized:validate
 
 «Mi día ideal» permite elegir una fecha y añadir objetivos con notas opcionales.
 Cada día conserva sus propios objetivos; se pueden editar, marcar como completados
-y eliminar. Se guardan localmente y se sincronizan en la colección `ideal_day_goals`
+y eliminar. Desde «Reutilizar objetivos de días anteriores» podés elegir una fecha
+anterior y copiar algunos o todos sus objetivos, con sus notas y como pendientes.
+Los objetivos que ya están en el día de destino no se duplican.
+Se guardan localmente y se sincronizan en la colección `ideal_day_goals`
 de PocketBase, con acceso limitado al usuario propietario. Ejecutá
 `npm run schema:ideal-day` antes de desplegar esta versión en otro entorno.
 

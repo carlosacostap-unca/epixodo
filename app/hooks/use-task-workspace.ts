@@ -113,6 +113,7 @@ import {
   type LocationEntryDraft,
 } from "../lib/locations";
 import {
+  copyIdealDayGoals,
   createIdealDayGoal,
   patchIdealDayGoal,
   type IdealDayGoal,
@@ -1073,6 +1074,13 @@ export function useTaskWorkspace() {
     return true;
   }
 
+  function reuseIdealDayGoals(date: string, goalIds: string[]) {
+    setWorkspace((current) => {
+      const copies = copyIdealDayGoals(current.idealDayGoals, goalIds, date);
+      return copies.length ? { ...current, idealDayGoals: [...current.idealDayGoals, ...copies] } : current;
+    });
+  }
+
   function updateIdealDayGoal(goalId: string, patch: Partial<Pick<IdealDayGoal, "title" | "notes" | "completed">>) {
     setWorkspace((current) => {
       const goal = current.idealDayGoals.find((item) => item.id === goalId);
@@ -1215,6 +1223,7 @@ export function useTaskWorkspace() {
     deleteNutritionShoppingList,
     addLocationEntry,
     addIdealDayGoal,
+    reuseIdealDayGoals,
     updateIdealDayGoal,
     deleteIdealDayGoal,
     updateLocationEntry,

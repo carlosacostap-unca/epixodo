@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import type { TaskWorkspace } from "../hooks/use-task-workspace";
-import { getIdealDayGoals, idealDayGoalMatchesQuery, type IdealDayGoal, type IdealDayGoalDraft } from "../lib/ideal-day";
+import { getIdealDayGoals, getPreviousIdealDayDates, idealDayGoalMatchesQuery, isIdealDayGoalAlreadyAdded, type IdealDayGoal, type IdealDayGoalDraft } from "../lib/ideal-day";
 import { getTodayDateOnly, isValidDateOnly } from "../lib/tasks";
 
 const fieldClass = "w-full rounded-xl border border-[#344a65] bg-[#091727] px-3 py-2.5 text-sm text-[#edf3ff] outline-none placeholder:text-[#7185a3] focus:border-[#f2be67] focus:ring-2 focus:ring-[#f2be67]/15";
@@ -87,6 +87,7 @@ function DayGoals({ date, goals, workspace, searchQuery }: { date: string; goals
 
   return (
     <div className="grid gap-5 p-4 sm:p-5">
+      <ReusableGoals date={date} workspace={workspace} />
       <GoalForm date={date} disabled={!workspace.isLoaded} onSave={(draft) => workspace.addIdealDayGoal(draft)} />
       {!workspace.isLoaded ? <p className="py-8 text-center text-sm text-[#91a3bc]">Cargando tus objetivos…</p> : visibleGoals.length ? (
         <ul className="grid gap-3">
@@ -122,6 +123,86 @@ function DayGoals({ date, goals, workspace, searchQuery }: { date: string; goals
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#91a3bc]">{searchQuery.trim() ? "Probá otra búsqueda para esta fecha." : "Escribí algo que quieras lograr en esta fecha, como salir a caminar o dedicar un rato a leer."}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function ReusableGoals({ date, workspace }: { date: string; workspace: TaskWorkspace }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const previousDates = getPreviousIdealDayDates(workspace.idealDayGoals, date);
+  const [chosenSourceDate, setSourceDate] = useState("");
+  const sourceDate = previousDates.includes(chosenSourceDate) ? chosenSourceDate : previousDates[0] ?? "";
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [message, setMessage] = useState("");
+  const panelId = useId();
+  const sourceGoals = getIdealDayGoals(workspace.idealDayGoals, sourceDate);
+  const available = sourceGoals.filter((goal) => !isIdealDayGoalAlreadyAdded(goal, workspace.idealDayGoals, date));
+  const selected = available.filter((goal) => selectedIds.includes(goal.id));
+  const allSelected = available.length > 0 && selected.length === available.length;
+
+  function copySelected() {
+    if (!selected.length) return;
+    workspace.reuseIdealDayGoals(date, selected.map((goal) => goal.id));
+    setSelectedIds([]);
+    setMessage("Objetivos añadidos a este día como pendientes.");
+  }
+
+  return (
+    <div className="rounded-xl border border-[#344a65] bg-[#091727]">
+      <button type="button" disabled={!workspace.isLoaded} aria-expanded={isOpen} aria-controls={panelId} onClick={() => setIsOpen((value) => !value)} className="flex min-h-12 w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold text-[#f2be67] hover:bg-[#192d46]">
+        <span>Reutilizar objetivos de días anteriores</span>
+        <span aria-hidden="true">{isOpen ? "−" : "+"}</span>
+      </button>
+      {isOpen ? (
+        <div id={panelId} className="grid gap-4 border-t border-[#20334d] p-4">
+          {previousDates.length ? (
+            <>
+              <label className="grid min-w-0 gap-1.5 text-xs font-bold text-[#a6b8d0]">
+                Copiar desde
+                <select value={sourceDate} onChange={(event) => {
+                  setSourceDate(event.target.value);
+                  setSelectedIds([]);
+                  setMessage("");
+                }} className={`${fieldClass} min-h-11 min-w-0`}>
+                  {previousDates.map((previousDate) => <option key={previousDate} value={previousDate}>{formatDate(previousDate, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</option>)}
+                </select>
+              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-[#91a3bc]">Elegí los objetivos que querés repetir.</p>
+                <button type="button" disabled={!available.length} onClick={() => {
+                  setSelectedIds(allSelected ? [] : available.map((goal) => goal.id));
+                  setMessage("");
+                }} className="min-h-11 text-xs font-bold text-[#a9c9ff] hover:underline">{allSelected ? "Deseleccionar todos" : "Seleccionar todos"}</button>
+              </div>
+              <ul aria-label="Objetivos del día anterior elegido" className="grid max-h-80 gap-2 overflow-y-auto overscroll-contain">
+                {sourceGoals.map((goal) => {
+                  const alreadyAdded = isIdealDayGoalAlreadyAdded(goal, workspace.idealDayGoals, date);
+                  return (
+                    <li key={goal.id}>
+                      <label className={`flex min-h-12 items-start gap-3 rounded-lg border border-[#293f5e] p-3 ${alreadyAdded ? "text-[#8192ad]" : "cursor-pointer text-[#edf3ff] hover:bg-[#192d46]"}`}>
+                        <input type="checkbox" disabled={alreadyAdded} checked={!alreadyAdded && selectedIds.includes(goal.id)} onChange={(event) => {
+                          setSelectedIds((current) => event.target.checked ? [...current, goal.id] : current.filter((id) => id !== goal.id));
+                          setMessage("");
+                        }} aria-label={`Reutilizar: ${goal.title}`} className="mt-0.5 h-5 w-5 shrink-0 accent-[#f2be67]" />
+                        <span className="grid min-w-0 gap-1">
+                          <span className="break-words text-sm font-bold">{goal.title}</span>
+                          {goal.notes ? <span className="whitespace-pre-wrap break-words text-xs leading-5 text-[#91a3bc]">{goal.notes}</span> : null}
+                          {alreadyAdded ? <span className="text-xs text-[#63d3a5]">Ya está en este día</span> : null}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" disabled={!selected.length} onClick={copySelected} className={primaryClass}>Añadir {selected.length || "los"} {selected.length === 1 ? "objetivo" : "objetivos"}</button>
+                <p className="text-xs text-[#91a3bc]">Se copiarán con sus notas y como pendientes.</p>
+              </div>
+            </>
+          ) : <p className="text-sm leading-6 text-[#91a3bc]">Todavía no tenés objetivos en fechas anteriores a este día. Cuando los registres, podrás reutilizarlos desde acá.</p>}
+          {message ? <p role="status" className="text-sm text-[#63d3a5]">{message}</p> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
