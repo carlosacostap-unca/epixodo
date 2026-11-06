@@ -32,6 +32,7 @@ const collections = {
   nutritionShoppingLists: "nutrition_shopping_lists",
   nutritionShoppingItems: "nutrition_shopping_items",
   locations: "location_entries",
+  idealDayGoals: "ideal_day_goals",
 } as const;
 
 function quoteFilter(value: string) {
@@ -417,6 +418,15 @@ export async function getNormalizedWorkspace(
       createdAt: clientCreatedAt(record),
       updatedAt: clientUpdatedAt(record),
     })),
+    idealDayGoals: data.idealDayGoals.map((record) => ({
+      id: record.client_id,
+      date: text(record, "goal_date"),
+      title: text(record, "title"),
+      notes: text(record, "notes"),
+      completed: boolean(record, "completed"),
+      createdAt: clientCreatedAt(record),
+      updatedAt: clientUpdatedAt(record),
+    })),
   };
 }
 
@@ -773,6 +783,16 @@ export async function saveNormalizedWorkspace(
   })));
   remember(collections.locations, result.stale);
 
+  result = await upsertRows(request, collections.idealDayGoals, ownerId, workspace.idealDayGoals.map((goal) => ({
+    client_id: goal.id,
+    goal_date: goal.date,
+    title: goal.title,
+    notes: goal.notes,
+    completed: goal.completed,
+    ...stamps(goal),
+  })));
+  remember(collections.idealDayGoals, result.stale);
+
   await verifyDesiredIdentities(request, ownerId, workspace);
   await deleteStaleRecords(request, staleByCollection);
   const saved = await getNormalizedWorkspace(request, ownerId);
@@ -801,6 +821,7 @@ async function verifyDesiredIdentities(
     [collections.taskSubjects, workspace.tasks.flatMap((task) => task.subjectIds.map((subjectId) => `${task.id}::${subjectId}`))],
     [collections.events, workspace.subjectEvents.map((item) => item.id)],
     [collections.locations, workspace.locationEntries.map((item) => item.id)],
+    [collections.idealDayGoals, workspace.idealDayGoals.map((item) => item.id)],
   ];
   for (const [collection, desiredIds] of expectations) {
     const current = new Set((await listOwnedRecords(request, collection, ownerId)).map((item) => item.client_id));
@@ -834,6 +855,7 @@ async function deleteStaleRecords(
     collections.deliverables,
     collections.subjects,
     collections.locations,
+    collections.idealDayGoals,
   ];
   for (const collection of order) {
     for (const record of staleByCollection.get(collection) ?? []) {
@@ -868,6 +890,7 @@ function workspaceSignature(workspace: WorkspaceData) {
     nutritionHydrationEntries: [...workspace.nutritionHydrationEntries].sort(byId),
     nutritionShoppingLists: workspace.nutritionShoppingLists.map((list) => ({ ...list, items: [...list.items].sort(byId) })).sort(byId),
     locationEntries: [...workspace.locationEntries].sort(byId),
+    idealDayGoals: [...workspace.idealDayGoals].sort(byId),
   };
   return JSON.stringify(canonicalize(normalized));
 }

@@ -8,6 +8,7 @@ import NutritionView from "./nutrition-view";
 import LocationsView from "./locations-view";
 import CaptureView from "./capture-view";
 import ExpectationsView from "./expectations-view";
+import IdealDayView from "./ideal-day-view";
 import CompanionView from "./companion-view";
 import TodayOverview, { getTodayOverviewCount } from "./today-overview";
 import InboxAiSuggestion, { type InboxSuggestionAction } from "./inbox-ai-suggestion";
@@ -53,6 +54,7 @@ type ViewKey =
   | "capture"
   | "companion"
   | "today"
+  | "ideal-day"
   | "inbox"
   | "upcoming"
   | "waiting"
@@ -91,6 +93,7 @@ const viewLabels: Record<ViewKey, string> = {
   capture: "Ingreso",
   companion: "Compañía",
   today: "Hoy",
+  "ideal-day": "Mi día ideal",
   inbox: "Bandeja",
   upcoming: "Proximas",
   waiting: "Esperando",
@@ -107,6 +110,7 @@ const viewDescriptions: Record<ViewKey, string> = {
   capture: "Captura por texto o voz; la IA lo deja listo para que lo proceses en Bandeja.",
   companion: "Un lugar para pensar en voz alta, contar cómo viene el día y retomar cada conversación cuando quieras.",
   today: "Lo que requiere atención en esta fecha.",
+  "ideal-day": "Elegí una fecha y definí los objetivos que querés lograr ese día.",
   inbox: "Capturas de cualquier tipo, con campos sugeridos para que decidas dónde registrarlas.",
   upcoming: "El trabajo que se acerca en los próximos días.",
   waiting: "Tareas detenidas por una respuesta o condición externa.",
@@ -121,6 +125,7 @@ const viewDescriptions: Record<ViewKey, string> = {
 
 function ViewIcon({ view }: { view: ViewKey }) {
   const paths: Record<ViewKey, React.ReactNode> = {
+    "ideal-day": <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>,
     capture: <><path d="M12 3v11" /><path d="M8 7a4 4 0 0 1 8 0v4a4 4 0 0 1-8 0V7Z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></>,
     companion: <><path d="M5 5.5h14v10H9l-4 3v-13Z" /><path d="M9 9h6M9 12h4" /></>,
     today: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" /></>,
@@ -2944,6 +2949,7 @@ export default function TaskManager() {
         activeView !== "finances" &&
         activeView !== "nutrition" &&
         activeView !== "locations" &&
+        activeView !== "ideal-day" &&
         activeView !== "expectations"
       ) {
         event.preventDefault();
@@ -2996,7 +3002,7 @@ export default function TaskManager() {
       return [];
     }
 
-    if (activeView === "expectations") {
+    if (activeView === "expectations" || activeView === "ideal-day") {
       return [];
     }
 
@@ -3026,6 +3032,7 @@ export default function TaskManager() {
     { key: "capture", count: workspace.views.inbox.length },
     { key: "companion", count: companionConversationCount },
     { key: "today", count: getTodayOverviewCount(workspace) },
+    { key: "ideal-day", count: workspace.idealDayGoals.filter((goal) => goal.date === workspace.today && !goal.completed).length },
     { key: "inbox", count: workspace.views.inbox.length },
     { key: "upcoming", count: workspace.views.upcoming.length },
     { key: "waiting", count: workspace.views.waiting.length },
@@ -3170,8 +3177,8 @@ export default function TaskManager() {
                   ref={searchRef}
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder={activeView === "companion" ? "Buscar conversaciones…" : activeView === "finances" ? "Buscar movimientos y pagos…" : activeView === "nutrition" ? "Buscar alimentos y preparaciones…" : activeView === "locations" ? "Buscar lugares y notas…" : "Buscar en tu espacio…"}
-                  aria-label={activeView === "companion" ? "Buscar conversaciones" : activeView === "finances" ? "Buscar movimientos y pagos" : activeView === "nutrition" ? "Buscar alimentos y preparaciones" : activeView === "locations" ? "Buscar lugares y notas" : "Buscar en tu espacio"}
+                  placeholder={activeView === "ideal-day" ? "Buscar objetivos del día…" : activeView === "companion" ? "Buscar conversaciones…" : activeView === "finances" ? "Buscar movimientos y pagos…" : activeView === "nutrition" ? "Buscar alimentos y preparaciones…" : activeView === "locations" ? "Buscar lugares y notas…" : "Buscar en tu espacio…"}
+                  aria-label={activeView === "ideal-day" ? "Buscar objetivos del día" : activeView === "companion" ? "Buscar conversaciones" : activeView === "finances" ? "Buscar movimientos y pagos" : activeView === "nutrition" ? "Buscar alimentos y preparaciones" : activeView === "locations" ? "Buscar lugares y notas" : "Buscar en tu espacio"}
                   className="h-11 w-full rounded-xl border border-[#2b4261] bg-[#0d1a2a] pl-10 pr-14 text-sm font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#667b9a] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
                 />
                 <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#8295b0] sm:block">/</kbd>
@@ -3198,6 +3205,8 @@ export default function TaskManager() {
                       ? `${workspace.nutritionPlanItems.filter((item) => item.date === workspace.today).length} comidas planificadas hoy`
                       : activeView === "locations"
                       ? `${workspace.locationEntries.filter((item) => item.date === workspace.today).length} franjas planificadas hoy`
+                      : activeView === "ideal-day"
+                      ? "Objetivos para cada fecha"
                       : activeView === "expectations"
                       ? `${workspace.expectations.filter((item) => item.status === "pending").length} ${workspace.expectations.filter((item) => item.status === "pending").length === 1 ? "espera pendiente" : "esperas pendientes"}`
                       : activeView === "finances"
@@ -3252,7 +3261,7 @@ export default function TaskManager() {
                       Limpiar busqueda
                     </button>
                   ) : null}
-                  {activeView !== "companion" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "finances" && activeView !== "nutrition" && activeView !== "locations" && activeView !== "expectations" ? (
+                  {activeView !== "companion" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "finances" && activeView !== "nutrition" && activeView !== "locations" && activeView !== "expectations" && activeView !== "ideal-day" ? (
                     <button
                       type="button"
                       onClick={() => setIsTaskModalOpen(true)}
@@ -3307,6 +3316,8 @@ export default function TaskManager() {
                 />
               ) : activeView === "locations" ? (
                 <LocationsView workspace={workspace} searchQuery={searchQuery} />
+              ) : activeView === "ideal-day" ? (
+                <IdealDayView workspace={workspace} searchQuery={searchQuery} />
               ) : activeView === "expectations" ? (
                 <ExpectationsView workspace={workspace} />
               ) : activeView === "nutrition" ? (

@@ -47,6 +47,10 @@ const request = async (path, options = {}) => {
 
 const timestamp = "2026-07-26T12:00:00.000Z";
 const workspace = {
+  idealDayGoals: [
+    { id: "ideal-goal-1", date: "2026-11-06", title: "Leer", notes: "Un capítulo", completed: false, createdAt: timestamp, updatedAt: timestamp },
+    { id: "ideal-goal-2", date: "2026-11-07", title: "Caminar", notes: "", completed: true, createdAt: timestamp, updatedAt: timestamp },
+  ],
   subjects: [
     { id: "subject-1", name: "Trabajo", parentSubjectId: null, horizon: "short", createdAt: timestamp, updatedAt: timestamp },
     { id: "subject-2", name: "Respuesta pendiente", parentSubjectId: null, horizon: "waiting_response", createdAt: timestamp, updatedAt: timestamp },
@@ -104,6 +108,8 @@ const workspace = {
 await saveNormalizedWorkspace(request, owner, workspace);
 const loaded = await getNormalizedWorkspace(request, owner);
 assert.deepEqual(loaded, workspace);
+assert.equal(db.get("ideal_day_goals")[0].goal_date, "2026-11-06");
+assert.equal(loaded.idealDayGoals[1].completed, true);
 assert.equal(db.get("subject_events").find((item) => item.client_id === "event-2").start_time, "09:30");
 assert.equal(db.get("subject_events").find((item) => item.client_id === "event-2").end_time, "10:45");
 assert.equal(loaded.tasks[0].notes, "Capturado por voz.", "suggestion metadata must stay hidden from task notes");
@@ -127,16 +133,26 @@ db.get("subjects").push({ id: "foreign-record", owner: "owner-2", client_id: "fo
 assert.equal((await getNormalizedWorkspace(request, owner)).subjects.some((item) => item.id === "foreign-subject"), false, "owner filter must exclude foreign records");
 
 const nextWorkspace = structuredClone(workspace);
+nextWorkspace.idealDayGoals = nextWorkspace.idealDayGoals.filter((goal) => goal.id !== "ideal-goal-1");
+nextWorkspace.idealDayGoals[0].title = "Caminar por el parque";
+nextWorkspace.idealDayGoals[0].completed = false;
 nextWorkspace.locationEntries = [];
 nextWorkspace.tasks.push({ ...nextWorkspace.tasks[0], id: "task-2", title: "Nueva", subjectIds: [] });
 failingCollection = "tasks";
 await assert.rejects(() => saveNormalizedWorkspace(request, owner, nextWorkspace), /Injected tasks failure/);
 assert.equal(db.get("location_entries").some((item) => item.client_id === "location-1"), true, "a failed upsert must not delete stale records");
+assert.equal(db.get("ideal_day_goals").some((item) => item.client_id === "ideal-goal-1"), true, "a failed save must not delete goals");
 
 failingCollection = null;
 await saveNormalizedWorkspace(request, owner, nextWorkspace);
 assert.equal(db.get("location_entries").some((item) => item.client_id === "location-1"), false, "successful retry must delete stale records");
 assert.equal((await getNormalizedWorkspace(request, owner)).tasks.length, 2);
+assert.equal(db.get("ideal_day_goals").some((item) => item.client_id === "ideal-goal-1"), false);
+assert.deepEqual((await getNormalizedWorkspace(request, owner)).idealDayGoals, nextWorkspace.idealDayGoals);
+db.get("ideal_day_goals").push({ id: "foreign-goal-record", owner: "owner-2", client_id: "foreign-goal", goal_date: "2026-11-07", title: "Private", completed: false });
+await saveNormalizedWorkspace(request, owner, nextWorkspace);
+assert.equal(db.get("ideal_day_goals").some((item) => item.client_id === "foreign-goal"), true, "saving must preserve another owner's goals");
+assert.equal((await getNormalizedWorkspace(request, owner)).idealDayGoals.some((item) => item.id === "foreign-goal"), false);
 
 nextWorkspace.subjectEvents[1].startTime = "11:00";
 nextWorkspace.subjectEvents[1].endTime = "12:15";

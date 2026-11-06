@@ -35,8 +35,15 @@ remote schema with:
 npm run schema:deliverables
 npm run schema:subject-events
 npm run schema:finance-due-payments
+npm run schema:ideal-day
 npm run schema:normalized:validate
 ```
+
+«Mi día ideal» permite elegir una fecha y añadir objetivos con notas opcionales.
+Cada día conserva sus propios objetivos; se pueden editar, marcar como completados
+y eliminar. Se guardan localmente y se sincronizan en la colección `ideal_day_goals`
+de PocketBase, con acceso limitado al usuario propietario. Ejecutá
+`npm run schema:ideal-day` antes de desplegar esta versión en otro entorno.
 
 Los calendarios permiten registrar eventos con descripción, fecha y horarios de
 inicio y finalización, además de hitos y vencimientos. El final debe ser posterior

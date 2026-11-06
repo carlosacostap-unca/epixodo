@@ -23,6 +23,7 @@ const bool = () => ({ type: "bool", required: false });
 const editor = (required = false) => ({ type: "editor", required });
 
 export const normalizedSchema = {
+  ideal_day_goals: { fields: fields({ goal_date: text(true), title: text(true), notes: text(), completed: bool() }) },
   subjects: { fields: fields({ name: text(true), horizon: select(true, ["closure", "working", "short", "medium", "long", "waiting_response", "up_to_date", "none"]), parent: relation("subjects", false) }) },
   subject_deliverables: { fields: fields({ subject: relation("subjects"), name: text(true), description: editor(true) }) },
   subject_phases: { fields: fields({ subject: relation("subjects"), name: text(true), planned_start: text(), executed_start: text(), planned_end: text(), executed_end: text(), position: number(false) }) },

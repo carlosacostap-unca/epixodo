@@ -112,6 +112,12 @@ import {
   patchLocationEntry,
   type LocationEntryDraft,
 } from "../lib/locations";
+import {
+  createIdealDayGoal,
+  patchIdealDayGoal,
+  type IdealDayGoal,
+  type IdealDayGoalDraft,
+} from "../lib/ideal-day";
 
 type TaskPatch = Partial<
   Pick<
@@ -155,6 +161,7 @@ export function useTaskWorkspace() {
 
       if (
         localWorkspace.tasks.length > 0 ||
+        localWorkspace.idealDayGoals.length > 0 ||
         localWorkspace.expectations.length > 0 ||
         localWorkspace.subjects.length > 0 ||
         localWorkspace.deliverables.length > 0 ||
@@ -179,6 +186,7 @@ export function useTaskWorkspace() {
         const remoteWorkspace = await loadRemoteWorkspace();
         const hasRemoteData =
           remoteWorkspace.tasks.length > 0 ||
+          remoteWorkspace.idealDayGoals.length > 0 ||
           remoteWorkspace.expectations.length > 0 ||
           remoteWorkspace.subjects.length > 0 ||
           remoteWorkspace.deliverables.length > 0 ||
@@ -197,6 +205,7 @@ export function useTaskWorkspace() {
           remoteWorkspace.locationEntries.length > 0;
         const hasLocalData =
           localWorkspace.tasks.length > 0 ||
+          localWorkspace.idealDayGoals.length > 0 ||
           localWorkspace.expectations.length > 0 ||
           localWorkspace.subjects.length > 0 ||
           localWorkspace.deliverables.length > 0 ||
@@ -1057,6 +1066,28 @@ export function useTaskWorkspace() {
     setWorkspace((current) => ({ ...current, nutritionShoppingLists: current.nutritionShoppingLists.filter((list) => list.id !== listId) }));
   }
 
+  function addIdealDayGoal(draft: IdealDayGoalDraft) {
+    const goal = createIdealDayGoal(draft);
+    if (!goal) return false;
+    setWorkspace((current) => ({ ...current, idealDayGoals: [...current.idealDayGoals, goal] }));
+    return true;
+  }
+
+  function updateIdealDayGoal(goalId: string, patch: Partial<Pick<IdealDayGoal, "title" | "notes" | "completed">>) {
+    setWorkspace((current) => {
+      const goal = current.idealDayGoals.find((item) => item.id === goalId);
+      const updated = goal ? patchIdealDayGoal(goal, patch) : null;
+      return updated ? {
+        ...current,
+        idealDayGoals: current.idealDayGoals.map((item) => item.id === goalId ? updated : item),
+      } : current;
+    });
+  }
+
+  function deleteIdealDayGoal(goalId: string) {
+    setWorkspace((current) => ({ ...current, idealDayGoals: current.idealDayGoals.filter((item) => item.id !== goalId) }));
+  }
+
   function addLocationEntry(draft: LocationEntryDraft) {
     const entry = createLocationEntry(draft);
     if (entry) {
@@ -1183,6 +1214,9 @@ export function useTaskWorkspace() {
     deleteNutritionShoppingItem,
     deleteNutritionShoppingList,
     addLocationEntry,
+    addIdealDayGoal,
+    updateIdealDayGoal,
+    deleteIdealDayGoal,
     updateLocationEntry,
     deleteLocationEntry,
     getNutritionSummary,

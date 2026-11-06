@@ -7,6 +7,7 @@ export function loadWorkspace(): WorkspaceData {
   if (typeof window === "undefined") {
     return {
       tasks: [],
+      idealDayGoals: [],
       expectations: [],
       subjects: [],
       deliverables: [],
@@ -38,6 +39,7 @@ export function saveWorkspace(workspace: WorkspaceData) {
     STORAGE_KEY,
     JSON.stringify({
       tasks: workspace.tasks,
+      idealDayGoals: workspace.idealDayGoals,
       expectations: workspace.expectations,
       subjects: workspace.subjects,
       deliverables: workspace.deliverables,

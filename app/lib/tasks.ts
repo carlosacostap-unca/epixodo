@@ -1,5 +1,6 @@
 import type { FinanceAccount, FinanceDuePayment, FinanceEntry } from "./finance";
 import type { LocationEntry } from "./locations";
+import type { IdealDayGoal } from "./ideal-day";
 import type {
   NutritionFood,
   NutritionHydrationEntry,
@@ -207,6 +208,7 @@ export type TaskDraft = {
 
 export type WorkspaceData = {
   tasks: Task[];
+  idealDayGoals: IdealDayGoal[];
   expectations: Expectation[];
   subjects: Subject[];
   deliverables: SubjectDeliverable[];
@@ -275,6 +277,7 @@ export const subjectHorizons: { value: SubjectHorizon; label: string }[] = [
 export function emptyWorkspace(): WorkspaceData {
   return {
     tasks: [],
+    idealDayGoals: [],
     expectations: [],
     subjects: [],
     deliverables: [],

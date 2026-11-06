@@ -41,6 +41,7 @@ import {
   type NutritionShoppingList,
 } from "./nutrition";
 import type { LocationEntry } from "./locations";
+import { isValidIdealDayGoalDraft, type IdealDayGoal } from "./ideal-day";
 
 type LegacyProject = {
   id: string;
@@ -63,6 +64,20 @@ type LegacyTask = Omit<
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toIdealDayGoal(value: unknown): IdealDayGoal | null {
+  if (!isRecord(value) || typeof value.id !== "string" || !value.id ||
+    typeof value.date !== "string" || typeof value.title !== "string" ||
+    typeof value.notes !== "string" || typeof value.completed !== "boolean" ||
+    typeof value.createdAt !== "string" || typeof value.updatedAt !== "string") return null;
+  const draft = { date: value.date, title: value.title, notes: value.notes };
+  if (!isValidIdealDayGoalDraft(draft)) return null;
+  return {
+    id: value.id, date: value.date, title: repairMojibake(value.title.trim()),
+    notes: repairMojibake(value.notes.trim()), completed: value.completed,
+    createdAt: value.createdAt, updatedAt: value.updatedAt,
+  };
 }
 
 function isSubjectHorizon(value: unknown): value is SubjectHorizon {
@@ -414,6 +429,9 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
   const expectations = (Array.isArray(value.expectations) ? value.expectations : [])
     .map(toExpectation)
     .filter((item): item is Expectation => Boolean(item));
+  const idealDayGoals = (Array.isArray(value.idealDayGoals) ? value.idealDayGoals : [])
+    .map(toIdealDayGoal)
+    .filter((item): item is IdealDayGoal => Boolean(item));
 
   const financeAccounts = (Array.isArray(value.financeAccounts) ? value.financeAccounts : [])
     .map(toFinanceAccount)
@@ -466,6 +484,7 @@ export function normalizeWorkspaceData(value: unknown): WorkspaceData {
 
   return {
     tasks,
+    idealDayGoals,
     expectations,
     subjects,
     deliverables,
@@ -500,6 +519,7 @@ export function parseWorkspaceJson(raw: string | null): WorkspaceData {
 export function hasWorkspaceContent(workspace: WorkspaceData): boolean {
   return (
     workspace.tasks.length > 0 ||
+    workspace.idealDayGoals.length > 0 ||
     workspace.expectations.length > 0 ||
     workspace.subjects.length > 0 ||
     workspace.deliverables.length > 0 ||
