@@ -2766,6 +2766,10 @@ function SubjectFolderBrowser({
   );
 }
 
+const subjectHorizonBoardOrder = [...subjectHorizons].sort(
+  (a, b) => Number(a.value === "closure") - Number(b.value === "closure"),
+);
+
 function SubjectHorizonBoard({
   subjects,
   selectedSubjectId,
@@ -2815,7 +2819,7 @@ function SubjectHorizonBoard({
   return (
     <div className="grid gap-3">
       <div className="grid gap-3">
-        {subjectHorizons.map((horizon) => {
+        {subjectHorizonBoardOrder.map((horizon) => {
           const horizonSubjects = subjectsByHorizon.get(horizon.value) ?? [];
 
           return (
