@@ -8,7 +8,7 @@ export const metadata = { title: "Planificación | Epixodo" };
 
 export default async function PlanningPage({ searchParams }: PageProps<"/planificacion">) {
   if (!(await getPageUser())) redirect("/");
-  const { vista, asunto, tarea } = await searchParams;
+  const { vista, asunto, tarea, asignada, desdeEntrada } = await searchParams;
   const view = resolveWorkspaceView(planningViews, vista);
   const subjectId = typeof asunto === "string" ? asunto : undefined;
 
@@ -28,6 +28,8 @@ export default async function PlanningPage({ searchParams }: PageProps<"/planifi
       view={view}
       subjectId={subjectId}
       taskId={typeof tarea === "string" ? tarea : undefined}
+      highlightedId={typeof asignada === "string" ? asignada : undefined}
+      returnEntryId={typeof desdeEntrada === "string" ? desdeEntrada : undefined}
     />
   );
 }

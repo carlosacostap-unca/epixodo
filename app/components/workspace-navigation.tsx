@@ -1,16 +1,25 @@
 "use client";
 
-import { useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { destinations } from "../lib/module-navigation";
 import LogoutButton from "./logout-button";
+import { useWorkspaceMemory } from "./workspace-provider";
 
 export default function WorkspaceNavigation() {
   const pathname = usePathname();
+  const search = useSearchParams().toString();
+  const memory = useWorkspaceMemory();
+  const [links, setLinks] = useState<Record<string, string>>({});
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const active = destinations.find(({ id }) => pathname === `/${id}`);
+  const currentUrl = search ? `${pathname}?${search}` : pathname;
+
+  useEffect(() => {
+    if (active) memory.set(`navigation:${active.id}`, currentUrl);
+  }, [active, currentUrl, memory]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-[#294348] bg-[#101e23] text-[#e4f3ed]">
@@ -22,11 +31,15 @@ export default function WorkspaceNavigation() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => dialog.current?.showModal()}
+            onClick={() => {
+              setLinks(Object.fromEntries(destinations.map(({ id }) => [id, String(memory.get(`navigation:${id}`) ?? `/${id}`)])));
+              dialog.current?.showModal();
+            }}
             aria-haspopup="dialog"
+            aria-label={active ? `Módulos · ${active.label}` : "Módulos"}
             className="inline-flex min-h-11 items-center gap-2 border border-[#3c565b] px-3 text-sm font-semibold hover:bg-[#22353b]"
           >
-            Módulos <span aria-hidden="true" className="text-[#bcefd9]">▾</span>
+            {active?.label ?? "Módulos"} <span aria-hidden="true" className="text-[#bcefd9]">▾</span>
           </button>
           <div className="hidden sm:block"><LogoutButton /></div>
         </div>
@@ -45,7 +58,7 @@ export default function WorkspaceNavigation() {
             {[{ id: "", label: "Inicio" }, ...destinations].map(({ id, label }) => (
               <li key={id}>
                 <Link
-                  href={`/${id}`}
+                  href={links[id] ?? `/${id}`}
                   prefetch={false}
                   aria-current={(active?.id ?? "") === id ? "page" : undefined}
                   onClick={() => dialog.current?.close()}

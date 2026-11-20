@@ -2404,10 +2404,7 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
         phases={workspace.phases}
         today={workspace.today}
         onPatch={workspace.planning.patchTask}
-        onAssignSubjects={workspace.planning.assignTaskSubjects}
-        onStatus={workspace.planning.setTaskStatus}
-        onPriority={workspace.planning.setTaskPriority}
-        onDelete={workspace.planning.deleteTask}
+        onAssignSubjects={workspace.planning.assignTaskSubjects}        onDelete={workspace.planning.deleteTask}
         onClose={() => setSelectedTaskId(null)}
         getAvailableParentTasksForTask={workspace.planning.getAvailableParentTasksForTask}
       />

@@ -4,7 +4,8 @@ import { getPageUser } from "../../lib/auth";
 
 export const metadata = { title: "Finanzas | Epixodo" };
 
-export default async function FinancePage() {
+export default async function FinancePage({ searchParams }: PageProps<"/finanzas">) {
   if (!(await getPageUser())) redirect("/");
-  return <FinanceScreen />;
+  const { desdeEntrada } = await searchParams;
+  return <FinanceScreen returnEntryId={typeof desdeEntrada === "string" ? desdeEntrada : undefined} />;
 }

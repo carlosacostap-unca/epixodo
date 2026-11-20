@@ -1,12 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
-import {
-  loadRemoteWorkspace,
-  loadWorkspace,
-  saveRemoteWorkspace,
-  saveWorkspace,
-} from "../lib/task-storage";
+import { useCallback, useMemo, useState, type SetStateAction } from "react";
+import { useWorkspaceSync } from "./use-workspace-sync";
 import {
   createSubject,
   createSubjectDeliverable,
@@ -112,7 +107,7 @@ type PhasePatch = Partial<
 
 type SubjectEventPatch = Partial<SubjectEventDraft>;
 
-export function useTaskWorkspace() {
+export function useTaskWorkspace(owner: string) {
   const [{ workspace, suggestionErrors }, setState] = useState(() => ({
     workspace: emptyWorkspace(),
     suggestionErrors: new Map<string, string>(),
@@ -123,12 +118,7 @@ export function useTaskWorkspace() {
       return nextWorkspace === current.workspace ? current : { ...current, workspace: nextWorkspace };
     });
   }, []);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const saveTimerRef = useRef<number | null>(null);
-  const saveQueue = useRef(Promise.resolve());
-  const isMounted = useRef(false);
+  const sync = useWorkspaceSync(owner, workspace, setWorkspace);
   const today = getTodayDateOnly();
   const { financeAccounts, financeEntries, financeDuePayments, ...otherData } = workspace;
   const finance = useFinanceWorkspace({ financeAccounts, financeEntries, financeDuePayments }, today, updateFinance);
@@ -144,144 +134,6 @@ export function useTaskWorkspace() {
       return nextFinance === currentFinance ? current : { ...current, ...nextFinance };
     });
   }
-
-  useEffect(() => {
-    isMounted.current = true;
-    let isCancelled = false;
-
-    async function hydrateWorkspace() {
-      const localWorkspace = loadWorkspace();
-
-      if (
-        localWorkspace.tasks.length > 0 ||
-        localWorkspace.idealDayGoals.length > 0 ||
-        localWorkspace.expectations.length > 0 ||
-        localWorkspace.subjects.length > 0 ||
-        localWorkspace.deliverables.length > 0 ||
-        localWorkspace.phases.length > 0 ||
-        localWorkspace.subjectEvents.length > 0 ||
-        localWorkspace.financeAccounts.length > 0 ||
-        localWorkspace.financeEntries.length > 0 ||
-        localWorkspace.financeDuePayments.length > 0 ||
-        Boolean(localWorkspace.nutritionProfile) ||
-        localWorkspace.nutritionFoods.length > 0 ||
-        localWorkspace.nutritionRecipes.length > 0 ||
-        localWorkspace.nutritionPlanItems.length > 0 ||
-        localWorkspace.nutritionIntakeEntries.length > 0 ||
-        localWorkspace.nutritionHydrationEntries.length > 0 ||
-        localWorkspace.nutritionShoppingLists.length > 0 ||
-        localWorkspace.locationEntries.length > 0
-      ) {
-        setWorkspace(localWorkspace);
-      }
-
-      try {
-        const remoteWorkspace = await loadRemoteWorkspace();
-        const hasRemoteData =
-          remoteWorkspace.tasks.length > 0 ||
-          remoteWorkspace.idealDayGoals.length > 0 ||
-          remoteWorkspace.expectations.length > 0 ||
-          remoteWorkspace.subjects.length > 0 ||
-          remoteWorkspace.deliverables.length > 0 ||
-          remoteWorkspace.phases.length > 0 ||
-          remoteWorkspace.subjectEvents.length > 0 ||
-          remoteWorkspace.financeAccounts.length > 0 ||
-          remoteWorkspace.financeEntries.length > 0 ||
-          remoteWorkspace.financeDuePayments.length > 0 ||
-          Boolean(remoteWorkspace.nutritionProfile) ||
-          remoteWorkspace.nutritionFoods.length > 0 ||
-          remoteWorkspace.nutritionRecipes.length > 0 ||
-          remoteWorkspace.nutritionPlanItems.length > 0 ||
-          remoteWorkspace.nutritionIntakeEntries.length > 0 ||
-          remoteWorkspace.nutritionHydrationEntries.length > 0 ||
-          remoteWorkspace.nutritionShoppingLists.length > 0 ||
-          remoteWorkspace.locationEntries.length > 0;
-        const hasLocalData =
-          localWorkspace.tasks.length > 0 ||
-          localWorkspace.idealDayGoals.length > 0 ||
-          localWorkspace.expectations.length > 0 ||
-          localWorkspace.subjects.length > 0 ||
-          localWorkspace.deliverables.length > 0 ||
-          localWorkspace.phases.length > 0 ||
-          localWorkspace.subjectEvents.length > 0 ||
-          localWorkspace.financeAccounts.length > 0 ||
-          localWorkspace.financeEntries.length > 0 ||
-          localWorkspace.financeDuePayments.length > 0 ||
-          Boolean(localWorkspace.nutritionProfile) ||
-          localWorkspace.nutritionFoods.length > 0 ||
-          localWorkspace.nutritionRecipes.length > 0 ||
-          localWorkspace.nutritionPlanItems.length > 0 ||
-          localWorkspace.nutritionIntakeEntries.length > 0 ||
-          localWorkspace.nutritionHydrationEntries.length > 0 ||
-          localWorkspace.nutritionShoppingLists.length > 0 ||
-          localWorkspace.locationEntries.length > 0;
-        const nextWorkspace = hasRemoteData ? remoteWorkspace : localWorkspace;
-
-        if (isCancelled) {
-          return;
-        }
-
-        setWorkspace(nextWorkspace);
-        setSyncError(null);
-        setIsLoaded(true);
-
-        if (!hasRemoteData && hasLocalData) {
-          await saveRemoteWorkspace(localWorkspace);
-        }
-      } catch (error) {
-        if (isCancelled) {
-          return;
-        }
-
-        setSyncError(
-          error instanceof Error ? error.message : "No se pudo conectar con PocketBase.",
-        );
-        setIsLoaded(true);
-      }
-    }
-
-    hydrateWorkspace();
-
-    return () => {
-      isCancelled = true;
-      isMounted.current = false;
-    };
-  }, [setWorkspace]);
-
-  useEffect(() => {
-    if (!isLoaded) {
-      return;
-    }
-
-    saveWorkspace(workspace);
-
-    if (saveTimerRef.current) {
-      window.clearTimeout(saveTimerRef.current);
-    }
-
-    saveTimerRef.current = window.setTimeout(() => {
-      saveQueue.current = saveQueue.current.then(async () => {
-        if (!isMounted.current) return;
-        setIsSaving(true);
-        try {
-          await saveRemoteWorkspace(workspace);
-          setSyncError(null);
-        } catch (error) {
-          setSyncError(
-            error instanceof Error ? error.message : "No se pudo sincronizar con PocketBase.",
-          );
-        } finally {
-          setIsSaving(false);
-        }
-      });
-    }, 500);
-
-    return () => {
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
-      }
-    };
-  }, [isLoaded, workspace]);
 
   const views = useMemo(
     () => ({
@@ -935,9 +787,7 @@ export function useTaskWorkspace() {
       confirmEntry: acceptCapture,
       discardEntry: discardCapture,
     },
-    isLoaded,
-    isSaving,
-    syncError,
+    ...sync,
     today,
     planning: {
       views,

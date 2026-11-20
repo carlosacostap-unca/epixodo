@@ -1,7 +1,39 @@
 import type { WorkspaceData } from "./tasks";
-import { parseWorkspaceJson } from "./workspace-codec";
+import { normalizeWorkspaceData, parseWorkspaceJson } from "./workspace-codec";
 
 const STORAGE_KEY = "epixodo.personal-task-manager.v1";
+
+export type WorkspaceCheckpoint = {
+  confirmed: WorkspaceData;
+  pending: WorkspaceData | null;
+};
+
+function checkpointKey(owner: string) {
+  return `epixodo.workspace.v2.${encodeURIComponent(owner)}`;
+}
+
+export function loadWorkspaceCheckpoint(owner: string): WorkspaceCheckpoint | null {
+  try {
+    const raw = window.localStorage.getItem(checkpointKey(owner));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as WorkspaceCheckpoint;
+    return {
+      confirmed: normalizeWorkspaceData(value.confirmed),
+      pending: value.pending ? normalizeWorkspaceData(value.pending) : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveWorkspaceCheckpoint(owner: string, checkpoint: WorkspaceCheckpoint): boolean {
+  try {
+    window.localStorage.setItem(checkpointKey(owner), JSON.stringify(checkpoint));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function loadWorkspace(): WorkspaceData {
   if (typeof window === "undefined") {
@@ -60,11 +92,15 @@ export function saveWorkspace(workspace: WorkspaceData) {
   );
 }
 
-async function requestWorkspace(method: "GET" | "PUT", workspace?: WorkspaceData) {
+async function requestWorkspace(method: "GET" | "PUT", workspace?: WorkspaceData, owner?: string, signal?: AbortSignal) {
   const response = await fetch("/api/workspace", {
     method,
-    headers: workspace ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      ...(workspace ? { "Content-Type": "application/json" } : {}),
+      ...(owner ? { "X-Workspace-Owner": owner } : {}),
+    },
     body: workspace ? JSON.stringify(workspace) : undefined,
+    signal,
   });
 
   if (!response.ok) {
@@ -79,10 +115,10 @@ async function requestWorkspace(method: "GET" | "PUT", workspace?: WorkspaceData
   return (await response.json()) as WorkspaceData;
 }
 
-export function loadRemoteWorkspace() {
-  return requestWorkspace("GET");
+export function loadRemoteWorkspace(owner?: string, signal?: AbortSignal) {
+  return requestWorkspace("GET", undefined, owner, signal);
 }
 
-export function saveRemoteWorkspace(workspace: WorkspaceData) {
-  return requestWorkspace("PUT", workspace);
+export function saveRemoteWorkspace(workspace: WorkspaceData, owner?: string, signal?: AbortSignal) {
+  return requestWorkspace("PUT", workspace, owner, signal);
 }

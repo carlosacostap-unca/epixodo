@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
+import { useWorkspaceDraft } from "../../components/workspace-provider";
 import { minorAmountToInput, parseMinorAmount, type FinanceAccount } from "../../lib/finance";
 import type { CaptureAction } from "./actions";
 import { mealTypes, milliValueToInput, parseMilliValue, type NutritionIntakeDraft } from "../../lib/nutrition";
@@ -24,7 +25,8 @@ export function captureDestination(suggestion: TaskAiSuggestion | null) {
   return labels[suggestion?.type ?? "task"].module;
 }
 
-export default function ReviewForm({ suggestion, accounts, subjects, today, applyError, isSuggested, onApply, onOpenModule }: {
+export default function ReviewForm({ entryId, suggestion, accounts, subjects, today, applyError, isSuggested, onApply, onOpenModule }: {
+  entryId: string;
   suggestion: TaskAiSuggestion;
   accounts: FinanceAccount[];
   subjects: Subject[];
@@ -36,15 +38,15 @@ export default function ReviewForm({ suggestion, accounts, subjects, today, appl
 }) {
   const compatibleAccounts = useMemo(() => "currency" in suggestion ? accounts.filter((account) => account.currency === suggestion.currency) : [], [accounts, suggestion]);
   const suggestedSubject = useMemo(() => "subjectName" in suggestion ? subjects.find((subject) => subject.name.toLocaleLowerCase("es") === suggestion.subjectName.toLocaleLowerCase("es")) : undefined, [subjects, suggestion]);
-  const [accountId, setAccountId] = useState(
-    suggestion.type === "finance_entry" ? compatibleAccounts[0]?.id ?? "" : "",
+  const [accountId, setAccountId] = useWorkspaceDraft(`review:${entryId}:account`,
+    () => suggestion.type === "finance_entry" ? compatibleAccounts[0]?.id ?? "" : "",
   );
-  const [subjectId, setSubjectId] = useState(suggestedSubject?.id ?? "");
-  const [fields, setFields] = useState<Record<string, string>>(() => suggestionFields(suggestion, today));
+  const [subjectId, setSubjectId] = useWorkspaceDraft(`review:${entryId}:subject`, () => suggestedSubject?.id ?? "");
+  const [fields, setFields] = useWorkspaceDraft(`review:${entryId}:fields`, () => suggestionFields(suggestion, today));
   const [error, setError] = useState("");
   const meta = labels[suggestion.type];
   const formName = isSuggested ? meta.title : "Tarea de Planificación";
-  const set = (key: string, value: string) => setFields((current) => ({ ...current, [key]: value }));
+  const set = (key: string, value: string) => setFields({ ...fields, [key]: value });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

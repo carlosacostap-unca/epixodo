@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ViewIcon from "../../components/view-icon";
 import { useWorkspace, WorkspaceLoading } from "../../components/workspace-provider";
-import { planningViews, workspaceHref } from "../../lib/module-navigation";
+import { inboxHref, planningViews, workspaceHref } from "../../lib/module-navigation";
 import { getSubjectPath, taskTreeItems, type Subject } from "../../lib/tasks";
 import { planningTaskHref, subjectManagementHref, type PlanningView } from "./navigation";
 import { TaskCreateModal, TaskEditModal } from "./task-forms";
@@ -70,7 +70,9 @@ function SubjectTree({ subjects, selectedId }: { subjects: Subject[]; selectedId
   );
 }
 
-export default function PlanningScreen({ view, subjectId, taskId }: { view: PlanningView; subjectId?: string; taskId?: string }) {
+export default function PlanningScreen({ view, subjectId, taskId, highlightedId, returnEntryId }: {
+  view: PlanningView; subjectId?: string; taskId?: string; highlightedId?: string; returnEntryId?: string;
+}) {
   const workspace = useWorkspace();
   const { planning, tasks, subjects, phases, deliverables, today } = workspace;
   const router = useRouter();
@@ -82,10 +84,15 @@ export default function PlanningScreen({ view, subjectId, taskId }: { view: Plan
   const search = searchState?.href === listHref ? searchState.text : "";
   const visibleTasks = view === "subjects" ? (subject ? planning.getTasksForSubject(subject.id) : []) : planning.views[view];
   const selectedTask = visibleTasks.find(({ id }) => id === taskId);
+  const assignedTask = visibleTasks.find(({ id }) => id === highlightedId);
   const filtered = taskTreeItems(visibleTasks.filter((task) => taskMatchesQuery(task, tasks, subjects, phases, search)));
   const heading = subject ? getSubjectPath(subjects, subject.id) : labels[view];
   const panel = selectedTask ? "detail" : subject || view !== "subjects" ? "tasks" : "subjects";
   const canCreate = view !== "subjects" || Boolean(subject);
+
+  useEffect(() => {
+    if (assignedTask?.id) document.getElementById(`plan-task-${assignedTask.id}`)?.scrollIntoView({ block: "nearest" });
+  }, [assignedTask?.id]);
 
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
@@ -119,11 +126,13 @@ export default function PlanningScreen({ view, subjectId, taskId }: { view: Plan
   return (
     <main className={`${styles.screen} flex-1 px-3 pb-12 pt-6 sm:px-6 lg:pt-8`}>
       <div className="mx-auto max-w-[1500px]">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#34485e] pb-4">
+        {returnEntryId ? <Link href={inboxHref(returnEntryId)} className="mb-2 inline-flex min-h-11 items-center font-semibold text-[#b4cdf5] underline underline-offset-4">← Volver a la entrada</Link> : null}
+        {panel === "detail" ? <h1 className="sr-only lg:hidden">Planificación</h1> : null}
+        <header className={`flex-wrap items-center justify-between gap-3 border-b border-[#34485e] pb-4 ${panel === "detail" ? "hidden lg:flex" : "flex"}`}>
           <h1 className="text-3xl font-bold leading-tight tracking-[-0.055em] sm:text-5xl">Planificación</h1>
           <Link href={subjectManagementHref(subject?.id)} className="flex min-h-11 items-center rounded-md border border-[#455b76] px-3 text-sm font-semibold text-[#c6d7ec] hover:bg-[#213650]">Gestionar asuntos <span aria-hidden="true" className="ml-2">↗</span></Link>
         </header>
-        <nav aria-label="Vistas de Planificación" className="flex flex-wrap gap-1 py-3">
+        <nav aria-label="Vistas de Planificación" className={`flex-wrap gap-1 py-3 ${panel === "detail" ? "hidden lg:flex" : "flex"}`}>
           {planningViews.map((destination) => (
             <Link
               key={destination}
@@ -148,6 +157,7 @@ export default function PlanningScreen({ view, subjectId, taskId }: { view: Plan
             <span aria-hidden="true" className="mr-2">←</span>{panel === "detail" ? "Volver a tareas" : "Volver a asuntos"}
           </Link>
         ) : null}
+        {panel === "detail" ? <p className="mb-3 break-words text-sm font-medium text-[#afc5e1] lg:hidden">{heading}</p> : null}
 
         <div className="grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(12rem,0.76fr)_minmax(0,1.35fr)_minmax(17rem,1.24fr)] 2xl:grid-cols-[minmax(14rem,0.7fr)_minmax(0,1.4fr)_minmax(20rem,1.25fr)]">
           <aside className={`${styles.pane} ${panel === "subjects" ? "block" : "hidden lg:block"}`}>
@@ -168,10 +178,15 @@ export default function PlanningScreen({ view, subjectId, taskId }: { view: Plan
                 </label>
               ) : null}
             </div>
+            {assignedTask ? (
+              <p role="status" className="border-b border-[#34485e] bg-[#1c3048] px-4 py-3 text-sm text-[#d9e7fa]">
+                <strong>{assignedTask.title}</strong> · Asignada a {assignedTask.subjectIds.map((id) => getSubjectPath(subjects, id)).join(", ")}.
+              </p>
+            ) : null}
             {filtered.length ? (
               <ul className="divide-y divide-[#34485e]">
                 {filtered.map(({ task, depth }) => (
-                  <li key={task.id} className="relative flex min-w-0 items-center gap-1 px-2" style={{ paddingInlineStart: 8 + Math.min(depth, 6) * 12 }}>
+                  <li key={task.id} id={`plan-task-${task.id}`} className={`relative flex min-w-0 scroll-mt-20 items-center gap-1 px-2 ${task.id === assignedTask?.id ? "bg-[#233d59]" : ""}`} style={{ paddingInlineStart: 8 + Math.min(depth, 6) * 12 }}>
                     <label className="grid size-11 shrink-0 cursor-pointer place-items-center">
                       <input type="checkbox" aria-label={`Completar ${task.title}`} checked={task.status === "completed"} onChange={(event) => planning.setTaskStatus(task.id, event.target.checked ? "completed" : "pending")} className="size-4 accent-[#b4cdf5]" />
                     </label>
@@ -207,15 +222,13 @@ export default function PlanningScreen({ view, subjectId, taskId }: { view: Plan
                   phases={phases}
                   today={today}
                   onPatch={planning.patchTask}
-                  onStatus={planning.setTaskStatus}
-                  onPriority={planning.setTaskPriority}
                   onDelete={planning.deleteTask}
                   onClose={closeTask}
                   getAvailableParentTasksForTask={planning.getAvailableParentTasksForTask}
                   onAssignSubjects={(id, subjectIds) => {
                     const error = planning.assignTaskSubjects(id, subjectIds);
                     if (!error && view === "unassigned" && subjectIds[0]) {
-                      router.push(planningTaskHref("subjects", subjectIds[0]));
+                      router.push(planningTaskHref("subjects", subjectIds[0]) + "&" + new URLSearchParams({ asignada: id }));
                     }
                     return error;
                   }}

@@ -37,6 +37,10 @@ export function workspaceHref(view: WorkspaceView, subjectId?: string) {
   return `/${destination.id}${query ? `?${query}` : ""}`;
 }
 
+export function inboxHref(entryId?: string) {
+  return workspaceHref("inbox") + (entryId ? "&" + new URLSearchParams({ entrada: entryId }) : "");
+}
+
 export function resolveWorkspaceView<View extends WorkspaceView>(
   views: readonly [View, ...View[]],
   slug: string | string[] | undefined,

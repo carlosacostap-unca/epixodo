@@ -9,11 +9,15 @@ function errorResponse(error: unknown) {
   return Response.json({ error: message }, { status: 500 });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) {
       return Response.json({ error: "Necesitás iniciar sesión." }, { status: 401 });
+    }
+    const owner = request.headers.get("X-Workspace-Owner");
+    if (owner && owner !== user.id) {
+      return Response.json({ error: "La sesión del espacio cambió." }, { status: 409 });
     }
 
     const workspace = await getPocketBaseWorkspace(user.id);
@@ -28,6 +32,10 @@ export async function PUT(request: Request) {
     const user = await getAuthenticatedUser();
     if (!user) {
       return Response.json({ error: "Necesitás iniciar sesión." }, { status: 401 });
+    }
+    const owner = request.headers.get("X-Workspace-Owner");
+    if (owner && owner !== user.id) {
+      return Response.json({ error: "La sesión del espacio cambió." }, { status: 409 });
     }
 
     const workspace = normalizeWorkspaceData(await request.json());

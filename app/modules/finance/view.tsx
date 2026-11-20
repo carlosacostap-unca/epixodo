@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import type { FinanceWorkspace } from "./workspace";
+import { FormEvent, useEffect, useId, useRef, useState } from "react";
+import { paymentExpenseId, type FinanceWorkspace } from "./workspace";
 import {
   financeAccountTypes,
   formatMoney,
@@ -51,19 +51,31 @@ function FinanceModal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const trigger = document.activeElement;
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[#030811]/80 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="finance-modal-title">
-      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-[#355071] bg-[#201a2e] shadow-[0_30px_100px_rgba(0,0,0,0.52)]">
+    <dialog ref={dialogRef} onCancel={(event) => { event.preventDefault(); onClose(); }} className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-2xl border border-[#574968] bg-[#201a2e] text-[#f0ebfc] shadow-2xl backdrop:bg-[#030811]/80" aria-labelledby={titleId}>
         <div className="flex items-center justify-between gap-4 border-b border-[#41374f] px-5 py-4">
           <div>
             <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#d8bdf9]">{eyebrow}</p>
-            <h3 id="finance-modal-title" className="mt-1 text-xl font-black tracking-[-0.02em] text-[#f2f6fc]">{title}</h3>
+            <h3 id={titleId} className="mt-1 text-xl font-black tracking-[-0.02em] text-[#f2f6fc]">{title}</h3>
           </div>
           <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#344c6d] text-lg font-bold text-[#b5c2d7] transition hover:bg-[#17283e]">×</button>
         </div>
         {children}
-      </div>
-    </div>
+    </dialog>
   );
 }
 
@@ -143,6 +155,7 @@ function AccountForm({
 
 function EntryForm({
   entry,
+  payment,
   accounts,
   today,
   defaultKind,
@@ -150,25 +163,27 @@ function EntryForm({
   onClose,
 }: {
   entry: FinanceEntry | null;
+  payment?: FinanceDuePayment;
   accounts: FinanceAccount[];
   today: string;
   defaultKind: FinanceEntryKind;
   onSave: (draft: FinanceEntryDraft) => void;
   onClose: () => void;
 }) {
-  const [accountId, setAccountId] = useState(entry?.accountId ?? accounts[0]?.id ?? "");
+  const [accountId, setAccountId] = useState(entry?.accountId ?? payment?.accountId ?? accounts[0]?.id ?? "");
   const [kind, setKind] = useState<FinanceEntryKind>(entry?.kind ?? defaultKind);
   const [date, setDate] = useState(entry?.date ?? today);
-  const [description, setDescription] = useState(entry?.description ?? "");
-  const [amount, setAmount] = useState(entry ? minorAmountToInput(entry.amountMinor) : "");
-  const [category, setCategory] = useState(entry?.category ?? "");
+  const [description, setDescription] = useState(entry?.description ?? payment?.description ?? "");
+  const initialAmount = entry?.amountMinor ?? payment?.amountMinor;
+  const [amount, setAmount] = useState(initialAmount === undefined ? "" : minorAmountToInput(initialAmount));
+  const [category, setCategory] = useState(entry?.category ?? payment?.category ?? "");
   const [error, setError] = useState("");
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amountMinor = parseMinorAmount(amount);
 
-    if (!accountId) {
+    if (!accounts.some((account) => account.id === accountId)) {
       setError("Elegí una cuenta para el movimiento.");
       return;
     }
@@ -191,13 +206,13 @@ function EntryForm({
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4 p-5">
-      <div className="grid grid-cols-2 rounded-xl border border-[#304865] bg-[#091522] p-1">
+        {!payment ? <div className="grid grid-cols-2 rounded-xl border border-[#304865] bg-[#091522] p-1">
         {(["expense", "income"] as const).map((value) => (
           <button key={value} type="button" onClick={() => setKind(value)} className={`h-10 rounded-lg text-sm font-black transition ${kind === value ? value === "income" ? "bg-[#63d3a5] text-[#071b14]" : "bg-[#ff927d] text-[#28100d]" : "text-[#9aacbf] hover:bg-[#15263b]"}`}>
             {value === "income" ? "Ingreso" : "Egreso"}
           </button>
         ))}
-      </div>
+      </div> : null}
       <FinanceField label="Cuenta">
         <select value={accountId} onChange={(event) => setAccountId(event.target.value)} className={financeControlClass}>
           {accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}
@@ -333,7 +348,7 @@ export default function FinanceView({
   searchQuery: string;
 }) {
   const [accountModalId, setAccountModalId] = useState<string | "new" | null>(null);
-  const [entryModal, setEntryModal] = useState<{ id: string | null; kind: FinanceEntryKind } | null>(null);
+  const [entryModal, setEntryModal] = useState<{ id: string | null; kind: FinanceEntryKind; payment?: FinanceDuePayment } | null>(null);
   const [duePaymentModalId, setDuePaymentModalId] = useState<string | "new" | null>(null);
   const selectedAccount = accountModalId && accountModalId !== "new"
     ? finance.accounts.find((account) => account.id === accountModalId) ?? null
@@ -346,17 +361,20 @@ export default function FinanceView({
     : null;
   const { accountById } = finance;
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("es");
+  const amountTerms = (minor: number, currency: string) =>
+    [minorAmountToInput(minor), String(minor / 100), formatMoney(minor, currency)].join(" ");
   const visibleEntries = finance.recentEntries.filter((entry) => {
     if (!normalizedQuery) return true;
     const account = accountById.get(entry.accountId);
-    return `${entry.description} ${entry.category} ${account?.name ?? ""} ${entry.kind}`
+    const currency = account?.currency ?? "";
+    return `${entry.description} ${entry.category} ${account?.name ?? ""} ${entry.kind} ${entry.kind === "income" ? "ingreso" : "egreso gasto"} ${currency} ${entry.date} ${amountTerms(entry.amountMinor, currency || "ARS")}`
       .toLocaleLowerCase("es")
       .includes(normalizedQuery);
   });
   const visibleDuePayments = finance.orderedDuePayments.filter((payment) => {
     if (!normalizedQuery) return true;
     const account = payment.accountId ? accountById.get(payment.accountId) : null;
-    return `${payment.description} ${payment.category} ${payment.currency} ${account?.name ?? "sin cuenta"} ${payment.status}`
+    return `${payment.description} ${payment.category} ${payment.currency} ${account?.name ?? "sin cuenta"} ${payment.status} ${payment.status === "paid" ? "pagado" : "pendiente"} ${payment.dueDate} ${amountTerms(payment.amountMinor, payment.currency)}`
       .toLocaleLowerCase("es")
       .includes(normalizedQuery);
   });
@@ -418,7 +436,7 @@ export default function FinanceView({
       <section aria-labelledby="finance-due-payments-title" className="overflow-hidden rounded-sm border border-[#554a32] bg-[linear-gradient(145deg,#231c2a,#231c28)]">
           <div className="grid gap-3 border-b border-[#514135] px-4 py-4 sm:flex sm:items-end sm:justify-between sm:px-5">
             <div>
-              <h2 id="finance-due-payments-title" className="font-serif text-2xl tracking-tight text-[#f3ead8]">Vencimientos</h2>
+              <h2 id="finance-due-payments-title" className="scroll-mt-24 font-serif text-2xl tracking-tight text-[#f3ead8]">Vencimientos</h2>
               <p className="mt-1 text-xs leading-5 text-[#baab98]">Registrá el egreso para descontar el pago del saldo.</p>
             </div>
             <div className="flex items-center gap-2">
@@ -430,6 +448,8 @@ export default function FinanceView({
             <div className="divide-y divide-[#493b36]">
               {visibleDuePayments.map((payment) => {
                 const account = payment.accountId ? accountById.get(payment.accountId) : null;
+                const expenseId = finance.entries.find((entry) => entry.id === paymentExpenseId(payment.id))?.id;
+                const hasCompatibleAccount = finance.accounts.some((item) => item.currency === payment.currency);
                 const urgency = getFinanceDuePaymentUrgency(payment, finance.today);
                 const urgencyStyle = urgency === "overdue"
                   ? "border-[#864a3e] bg-[#331b18] text-[#ff9d88]"
@@ -458,6 +478,11 @@ export default function FinanceView({
                     </div>
                     <p className={`font-mono text-base font-black ${urgency === "overdue" ? "text-[#ff9d88]" : "text-[#f3ead8]"}`}>{formatMoney(payment.amountMinor, payment.currency)}</p>
                     <div className="flex flex-wrap gap-1 sm:justify-end">
+                      {payment.status === "paid" && (hasCompatibleAccount || expenseId) ? (
+                        <button type="button" className="min-h-11 rounded-lg border border-[#6e587f] px-2.5 text-xs font-bold text-[#e1d1fa] hover:bg-[#342742]" onClick={() => setEntryModal({ id: expenseId ?? null, kind: "expense", payment })}>
+                          {expenseId ? "Ver egreso" : "Registrar egreso"}
+                        </button>
+                      ) : null}
                       <button type="button" onClick={() => finance.setDuePaymentStatus(payment.id, payment.status === "paid" ? "pending" : "paid")} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black transition ${payment.status === "paid" ? "border-[#4b5c71] text-[#b8c5d9] hover:bg-[#332743]" : "border-[#366c58] text-[#75dcb1] hover:bg-[#142c25]"}`}>{payment.status === "paid" ? "Volver a pendiente" : "Marcar pagado"}</button>
                       <button type="button" onClick={() => setDuePaymentModalId(payment.id)} className="rounded-lg border border-[#4b4b46] px-2.5 py-1.5 text-xs font-bold text-[#c1b8a8] transition hover:bg-[#292923]">Editar</button>
                       <button type="button" onClick={() => confirmDuePaymentDelete(payment)} className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-bold text-[#d98276] transition hover:border-[#713d3a] hover:bg-[#2e1716]">Eliminar</button>
@@ -496,7 +521,7 @@ export default function FinanceView({
 
       {finance.accounts.length > 0 ? (
         <section aria-labelledby="finance-entries-title" className="overflow-hidden rounded-sm border border-[#514461] bg-[#201a2e]">
-          <div className="flex items-center justify-between border-b border-[#41374f] px-4 py-4 sm:px-5"><h2 id="finance-entries-title" className="font-serif text-2xl tracking-tight text-[#f3eefb]">Movimientos recientes</h2><span className="font-mono text-xs text-[#aba0bc]">{visibleEntries.length}</span></div>
+          <div className="flex items-center justify-between border-b border-[#41374f] px-4 py-4 sm:px-5"><h2 id="finance-entries-title" className="scroll-mt-24 font-serif text-2xl tracking-tight text-[#f3eefb]">Movimientos recientes</h2><span className="font-mono text-xs text-[#aba0bc]">{visibleEntries.length}</span></div>
           {visibleEntries.length > 0 ? (
             <div className="divide-y divide-[#41374f]">
               {visibleEntries.map((entry) => {
@@ -534,10 +559,11 @@ export default function FinanceView({
           <EntryForm
             key={selectedEntry?.id ?? `new-${entryModal.kind}`}
             entry={selectedEntry}
-            accounts={finance.accounts}
+            payment={entryModal.payment}
+            accounts={entryModal.payment ? finance.accounts.filter(({ currency }) => currency === entryModal.payment?.currency) : finance.accounts}
             today={finance.today}
             defaultKind={entryModal.kind}
-            onSave={(draft) => selectedEntry ? finance.updateEntry(selectedEntry.id, draft) : finance.addEntry(draft)}
+            onSave={(draft) => selectedEntry ? finance.updateEntry(selectedEntry.id, draft) : finance.addEntry(draft, entryModal.payment?.id)}
             onClose={() => setEntryModal(null)}
           />
         </FinanceModal>

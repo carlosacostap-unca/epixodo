@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { reconcileWorkspace } from "../app/lib/workspace-reconciliation.ts";
 import {
   getNormalizedWorkspace,
   saveNormalizedWorkspace,
@@ -108,6 +109,20 @@ const workspace = {
 await saveNormalizedWorkspace(request, owner, workspace);
 const loaded = await getNormalizedWorkspace(request, owner);
 assert.deepEqual(loaded, workspace);
+const pending = { ...loaded, tasks: [{ ...loaded.tasks[0], notes: "Edición local" }] };
+const remoteChanges = {
+  ...loaded,
+  tasks: [
+    { ...loaded.tasks[0], priority: "low" },
+    { ...loaded.tasks[0], id: "from-another-device", aiSuggestion: null },
+  ],
+};
+const reconciled = reconcileWorkspace(loaded, pending, remoteChanges);
+assert.deepEqual(reconciled.tasks, [
+  { ...pending.tasks[0], priority: "low" }, remoteChanges.tasks[1],
+]);
+assert.equal(reconcileWorkspace(loaded, loaded, remoteChanges), remoteChanges);
+assert.deepEqual(reconcileWorkspace(loaded, { ...pending, tasks: [] }, remoteChanges).tasks, [remoteChanges.tasks[1]]);
 assert.equal(db.get("ideal_day_goals")[0].goal_date, "2026-11-06");
 assert.equal(loaded.idealDayGoals[1].completed, true);
 assert.equal(db.get("subject_events").find((item) => item.client_id === "event-2").start_time, "09:30");

@@ -30,6 +30,8 @@ export type FinanceData = {
   financeDuePayments: FinanceDuePayment[];
 };
 
+export const paymentExpenseId = (paymentId: string) => `payment-expense-${paymentId}`;
+
 export function useFinanceWorkspace(
   { financeAccounts, financeEntries, financeDuePayments }: FinanceData,
   today: string,
@@ -138,14 +140,21 @@ export function useFinanceWorkspace(
     });
   }
 
-  function addEntry(draft: FinanceEntryDraft) {
+  function addEntry(draft: FinanceEntryDraft, paymentId?: string) {
     updateFinance((current) => {
+      const id = paymentId ? paymentExpenseId(paymentId) : undefined;
+      if (id && current.financeEntries.some((entry) => entry.id === id)) return current;
+      if (paymentId) {
+        const payment = current.financeDuePayments.find((item) => item.id === paymentId);
+        const account = current.financeAccounts.find((item) => item.id === draft.accountId);
+        if (payment?.status !== "paid" || draft.kind !== "expense" || account?.currency !== payment.currency) return current;
+      }
       const entry = createFinanceEntry(
         draft,
         new Set(current.financeAccounts.map((account) => account.id)),
       );
       return entry
-        ? { ...current, financeEntries: [...current.financeEntries, entry] }
+        ? { ...current, financeEntries: [...current.financeEntries, id ? { ...entry, id } : entry] }
         : current;
     });
   }

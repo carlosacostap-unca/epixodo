@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { CaptureResult } from "../../lib/ai-capture";
 import { workspaceHref } from "../../lib/module-navigation";
 import styles from "./capture.module.css";
+import { useWorkspace, useWorkspaceDraft } from "../../components/workspace-provider";
 
 type CaptureState = "idle" | "starting" | "recording" | "processing" | "saving" | "saved";
 
@@ -70,7 +71,8 @@ export default function CaptureComposer({ onCapture }: {
   onCapture: (capture: CaptureResult) => void;
 }) {
   const [mode, setMode] = useState<"text" | "voice">("text");
-  const [text, setText] = useState("");
+  const [text, setText] = useWorkspaceDraft("capture:composition", () => "");
+  const { syncPending, syncError, isSaving, retrySync } = useWorkspace();
   const [state, setState] = useState<CaptureState>("idle");
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState("");
@@ -292,7 +294,17 @@ export default function CaptureComposer({ onCapture }: {
       ) : null}
 
       {error ? <div role="alert" className="mt-4 rounded-xl border border-[#7a3d32] bg-[#2e1716] p-4 text-sm text-[#ffafa5]"><p>{error}</p>{retryAudio && retryAudio.size > 0 && retryAudio.size <= 15 * 1024 * 1024 ? <button type="button" disabled={isBusy} className="mt-3 min-h-11 underline underline-offset-4" onClick={() => { if (!busyRef.current) { busyRef.current = true; void processAudio(retryAudio); } }}>Reintentar transcripción</button> : null}</div> : null}
-      {state === "saved" ? <div role="status" className="mt-5 flex flex-wrap items-center justify-between gap-2 text-sm"><p className="text-[#63d3a5]">Entrada guardada en Bandeja</p><Link href={workspaceHref("inbox")} className="inline-flex min-h-11 items-center font-semibold text-[#ffd08a] underline underline-offset-4">Ver Bandeja</Link></div> : null}
+      {state === "saved" ? (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-sm">
+          <p role="status" className={syncPending ? "text-[#ffd08a]" : "text-[#63d3a5]"}>
+            {syncPending ? "Entrada en Bandeja · pendiente de sincronizar" : "Entrada sincronizada en Bandeja"}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {syncPending && syncError ? <button type="button" disabled={isSaving} onClick={retrySync} className="min-h-11 font-semibold text-[#ffd08a] underline underline-offset-4">Reintentar</button> : null}
+            <Link href={workspaceHref("inbox")} className="inline-flex min-h-11 items-center font-semibold text-[#ffd08a] underline underline-offset-4">Ver Bandeja</Link>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

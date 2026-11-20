@@ -7,6 +7,6 @@ export const metadata = { title: "Captura | Epixodo" };
 
 export default async function CapturePage({ searchParams }: PageProps<"/captura">) {
   if (!(await getPageUser())) redirect("/");
-  const { vista } = await searchParams;
-  return <CaptureScreen reviewing={resolveWorkspaceView(["capture", "inbox"], vista) === "inbox"} />;
+  const { vista, entrada } = await searchParams;
+  return <CaptureScreen reviewing={resolveWorkspaceView(["capture", "inbox"], vista) === "inbox"} entryId={typeof entrada === "string" ? entrada : undefined} />;
 }

@@ -8,7 +8,7 @@ import CaptureComposer from "./composer";
 import CaptureInbox from "./inbox";
 import styles from "./capture.module.css";
 
-export default function CaptureScreen({ reviewing }: { reviewing: boolean }) {
+export default function CaptureScreen({ reviewing, entryId }: { reviewing: boolean; entryId?: string }) {
   const workspace = useWorkspace();
   if (!workspace.isLoaded) return <WorkspaceLoading />;
 
@@ -35,7 +35,7 @@ export default function CaptureScreen({ reviewing }: { reviewing: boolean }) {
             ))}
           </nav>
         </header>
-        {reviewing ? <CaptureInbox /> : <CaptureComposer onCapture={workspace.capture.addEntry} />}
+        {reviewing ? <CaptureInbox entryId={entryId} /> : <CaptureComposer onCapture={workspace.capture.addEntry} />}
       </div>
     </main>
   );

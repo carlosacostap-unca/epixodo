@@ -12,8 +12,6 @@ export function TaskEditModal({
   phases,
   today,
   onPatch,
-  onStatus,
-  onPriority,
   onDelete,
   onClose,
   getAvailableParentTasksForTask,
@@ -26,22 +24,27 @@ export function TaskEditModal({
   phases: SubjectPhase[];
   today: string;
   onPatch: (taskId: string, patch: TaskPatch) => void;
-  onStatus: (taskId: string, status: TaskStatus) => void;
-  onPriority: (taskId: string, priority: TaskPriority) => void;
   onDelete: (taskId: string) => void;
   onClose: () => void;
   getAvailableParentTasksForTask: (taskId: string) => Task[];
   embedded?: boolean;
   onAssignSubjects?: (taskId: string, subjectIds: string[]) => string | undefined;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [titleDraft, setTitleDraft] = useState("");
+  const [draft, setDraft] = useState<TaskPatch | null>(null);
+  const [error, setError] = useState("");
+  const isEditing = draft !== null;
   const [isSubjectPickerOpen, setIsSubjectPickerOpen] = useState(false);
   const titleId = useId();
 
   if (!task) {
     return null;
   }
+
+  const edited = { ...task, ...draft };
+  const patchDraft = (updates: TaskPatch) => {
+    setError("");
+    setDraft((current) => ({ ...current, ...updates }));
+  };
 
   const isCompleted = task.status === "completed";
   const isDueToday = task.venceEl === today;
@@ -50,17 +53,18 @@ export function TaskEditModal({
   const isUnplanned = isActiveTask(task) && Boolean(task.venceEl) && !task.hacerEl;
   const parentOptions = getAvailableParentTasksForTask(task.id);
   const parentTask = parentOptions.find((option) => option.id === task.parentTaskId);
-  const availablePhases = getTaskAvailablePhases(phases, task.subjectIds);
+  const availablePhases = getTaskAvailablePhases(phases, edited.subjectIds);
   const availableDeliverables = getTaskAvailableDeliverables(
     deliverables,
-    task.subjectIds,
+    edited.subjectIds,
   );
   const selectedPhase = phases.find((phase) => phase.id === task.phaseId) ?? null;
   const selectedDeliverable =
     deliverables.find((deliverable) => deliverable.id === task.deliverableId) ?? null;
 
   function handleClose() {
-    setIsEditing(false);
+    setDraft(null);
+    setError("");
     onClose();
   }
 
@@ -104,15 +108,15 @@ export function TaskEditModal({
           {isEditing ? (
             <>
               <input
-                value={titleDraft}
-                onChange={(event) => setTitleDraft(event.target.value)}
+                value={edited.title}
+                onChange={(event) => patchDraft({ title: event.target.value })}
                 aria-label="Título de la tarea"
                 className="h-12 min-w-0 rounded-lg border border-[#33435f] bg-[#0c1320] px-4 text-base font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#6d7b97] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
               />
 
               <textarea
-                value={task.notes}
-                onChange={(event) => onPatch(task.id, { notes: event.target.value })}
+                value={edited.notes}
+                onChange={(event) => patchDraft({ notes: event.target.value })}
                 rows={4}
                 aria-label="Notas"
                 placeholder="Notas"
@@ -142,8 +146,8 @@ export function TaskEditModal({
               <>
                 <FieldLabel label="Estado">
                   <select
-                    value={task.status}
-                    onChange={(event) => onStatus(task.id, event.target.value as TaskStatus)}
+                    value={edited.status}
+                    onChange={(event) => patchDraft({ status: event.target.value as TaskStatus })}
                     className={controlClass}
                   >
                     {taskStatuses.map((status) => (
@@ -156,9 +160,9 @@ export function TaskEditModal({
 
                 <FieldLabel label="Depende de">
                   <select
-                    value={task.parentTaskId ?? ""}
+                    value={edited.parentTaskId ?? ""}
                     onChange={(event) =>
-                      onPatch(task.id, { parentTaskId: event.target.value || null })
+                      patchDraft({ parentTaskId: event.target.value || null })
                     }
                     className={controlClass}
                   >
@@ -174,9 +178,9 @@ export function TaskEditModal({
                 <FieldLabel label="Hacer el">
                   <input
                     type="date"
-                    value={task.hacerEl ?? ""}
+                    value={edited.hacerEl ?? ""}
                     onChange={(event) =>
-                      onPatch(task.id, { hacerEl: event.target.value || null })
+                      patchDraft({ hacerEl: event.target.value || null })
                     }
                     className={controlClass}
                   />
@@ -185,9 +189,9 @@ export function TaskEditModal({
                 <FieldLabel label="Vence el">
                   <input
                     type="date"
-                    value={task.venceEl ?? ""}
+                    value={edited.venceEl ?? ""}
                     onChange={(event) =>
-                      onPatch(task.id, { venceEl: event.target.value || null })
+                      patchDraft({ venceEl: event.target.value || null })
                     }
                     className={controlClass}
                   />
@@ -195,8 +199,8 @@ export function TaskEditModal({
 
                 <FieldLabel label="Prioridad">
                   <select
-                    value={task.priority}
-                    onChange={(event) => onPriority(task.id, event.target.value as TaskPriority)}
+                    value={edited.priority}
+                    onChange={(event) => patchDraft({ priority: event.target.value as TaskPriority })}
                     className={controlClass}
                   >
                     {taskPriorities.map((priority) => (
@@ -209,9 +213,9 @@ export function TaskEditModal({
 
                 <FieldLabel label="Fase">
                   <select
-                    value={task.phaseId ?? ""}
+                    value={edited.phaseId ?? ""}
                     onChange={(event) =>
-                      onPatch(task.id, { phaseId: event.target.value || null })
+                      patchDraft({ phaseId: event.target.value || null })
                     }
                     className={controlClass}
                   >
@@ -226,9 +230,9 @@ export function TaskEditModal({
 
                 <FieldLabel label="Entregable">
                   <select
-                    value={task.deliverableId ?? ""}
+                    value={edited.deliverableId ?? ""}
                     onChange={(event) =>
-                      onPatch(task.id, { deliverableId: event.target.value || null })
+                      patchDraft({ deliverableId: event.target.value || null })
                     }
                     className={controlClass}
                   >
@@ -243,7 +247,7 @@ export function TaskEditModal({
 
                 <FieldLabel label="Asuntos">
                   <div className="grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3">
-                    <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
+                    <SubjectChips subjects={subjects} subjectIds={edited.subjectIds} />
                     <button
                       type="button"
                       onClick={() => setIsSubjectPickerOpen(true)}
@@ -318,10 +322,12 @@ export function TaskEditModal({
             )}
           </div>
 
+          {error ? <p role="alert" className="text-sm text-[#ff9d88]">{error}</p> : null}
           <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
             <button
               type="button"
               onClick={() => {
+                if (!window.confirm("¿Borrar la tarea «" + task.title + "»?")) return;
                 onDelete(task.id);
                 handleClose();
               }}
@@ -330,24 +336,30 @@ export function TaskEditModal({
               Borrar
             </button>
             {isEditing ? (
+              <>
+              <button type="button" onClick={() => { setDraft(null); setError(""); }} className="min-h-10 px-3 text-sm font-semibold text-[#c9d6e8] hover:bg-[#182238]">Cancelar</button>
               <button
                 type="button"
-                disabled={!titleDraft.trim()}
+                disabled={!edited.title.trim()}
                 onClick={() => {
-                  onPatch(task.id, { title: titleDraft });
-                  setIsEditing(false);
+                  if (draft?.subjectIds?.some((id) => !subjects.some((subject) => subject.id === id))) {
+                    setError("Uno de los asuntos elegidos ya no está disponible.");
+                    return;
+                  }
+                  if (draft && Object.keys(draft).length) onPatch(task.id, draft);
+                  setDraft(null);
                 }}
                 className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
               >
                 Guardar cambios
               </button>
+              </>
             ) : (
               <>
                 <button
                   type="button"
                   onClick={() => {
-                    setTitleDraft(task.title);
-                    setIsEditing(true);
+                    setDraft({});
                   }}
                   className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
                 >
@@ -368,9 +380,15 @@ export function TaskEditModal({
         key={`${task.id}-${isSubjectPickerOpen ? "open" : "closed"}`}
         isOpen={isSubjectPickerOpen}
         subjects={subjects}
-        selectedSubjectIds={task.subjectIds}
+        selectedSubjectIds={edited.subjectIds}
         onApply={(subjectIds) => {
-          if (onAssignSubjects) {
+          if (isEditing) {
+            patchDraft({
+              subjectIds,
+              phaseId: phases.some(({ id, subjectId }) => id === edited.phaseId && subjectIds.includes(subjectId)) ? edited.phaseId : null,
+              deliverableId: deliverables.some(({ id, subjectId }) => id === edited.deliverableId && subjectIds.includes(subjectId)) ? edited.deliverableId : null,
+            });
+          } else if (onAssignSubjects) {
             const error = onAssignSubjects(task.id, subjectIds);
             if (error) return error;
           } else {

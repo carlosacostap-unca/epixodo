@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useWorkspace } from "../../components/workspace-provider";
-import { workspaceHref } from "../../lib/module-navigation";
+import { useWorkspace, useWorkspaceDraft, useWorkspaceMemory } from "../../components/workspace-provider";
+import { inboxHref, workspaceHref } from "../../lib/module-navigation";
 import type { Task, TaskAiSuggestion } from "../../lib/tasks";
 import { capturedText } from "./actions";
 import ReviewForm, { captureDestination } from "./review-form";
@@ -27,17 +27,24 @@ function suggestionFor(entry: Task): TaskAiSuggestion {
   };
 }
 
-export default function CaptureInbox() {
-  const { capture, finance, subjects, today } = useWorkspace();
+export default function CaptureInbox({ entryId }: { entryId?: string }) {
+  const { capture, finance, subjects, today, syncPending, syncError, retrySync } = useWorkspace();
+  const memory = useWorkspaceMemory();
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useWorkspaceDraft("capture:search", () => "");
   const query = search.trim().toLocaleLowerCase("es");
   const filtered = capture.entries.filter((entry) => !query ||
     [entry.title, entry.notes, captureDestination(entry.aiSuggestion)].join(" ").toLocaleLowerCase("es").includes(query),
   );
-  const selected = filtered.find(({ id }) => id === selectedId) ?? filtered[0];
+  const openEntry = capture.entries.find(({ id }) => id === entryId);
+  const selected = openEntry ?? filtered[0];
   const selectedDate = selected ? new Date(selected.createdAt) : null;
+
+  useEffect(() => {
+    if (!entryId || openEntry) return;
+    for (const field of ["account", "subject", "fields"]) memory.delete(`review:${entryId}:${field}`);
+    router.replace(inboxHref(), { scroll: false });
+  }, [entryId, memory, openEntry, router]);
 
   if (capture.entries.length === 0) {
     return (
@@ -50,7 +57,14 @@ export default function CaptureInbox() {
 
   return (
     <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]">
-      <aside aria-label="Cola de Bandeja" className="self-start overflow-hidden rounded-lg border border-[#423c35] bg-[#191815]">
+      {syncPending ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-[#ffd08a] lg:col-span-2">
+          <span role="status">Cambios pendientes de sincronizar</span>
+          {syncError ? <button type="button" onClick={retrySync} className="min-h-11 px-2 underline underline-offset-4">Reintentar</button> : null}
+        </div>
+      ) : null}
+      {openEntry ? <Link href={inboxHref()} className="inline-flex min-h-11 items-center font-semibold text-[#ffd08a] lg:hidden">← Volver a Bandeja</Link> : null}
+      <aside aria-label="Cola de Bandeja" className={`self-start overflow-hidden rounded-lg border border-[#423c35] bg-[#191815] ${openEntry ? "hidden lg:block" : ""}`}>
         <div className="border-b border-[#423c35] p-3">
           <label className="grid gap-2 text-sm font-semibold text-[#c0b5a7]">
             Buscar entradas
@@ -60,24 +74,22 @@ export default function CaptureInbox() {
             {filtered.length} {filtered.length === 1 ? "entrada" : "entradas"}{query ? ` de ${capture.entries.length}` : " por revisar"}
           </p>
         </div>
-        <ul className="max-h-52 divide-y divide-[#423c35] overflow-y-auto lg:max-h-[65dvh]">
+        <ul className="divide-y divide-[#423c35] overflow-y-auto lg:max-h-[65dvh]">
           {filtered.map((entry) => (
             <li key={entry.id}>
-              <button
-                type="button"
-                aria-pressed={entry.id === selected?.id}
-                aria-controls="capture-review"
-                onClick={() => setSelectedId(entry.id)}
-                className="grid min-h-16 w-full min-w-0 gap-1 !rounded-none border-l-[3px] border-transparent px-3 py-2.5 text-left outline-offset-[-3px] hover:bg-[#2b2822] aria-pressed:border-[#ffcb7e] aria-pressed:bg-[#352b20]"
+              <Link
+                href={inboxHref(entry.id)}
+                aria-current={entry.id === selected?.id ? "true" : undefined}
+                className="grid min-h-16 w-full min-w-0 gap-1 border-l-[3px] border-transparent px-3 py-2.5 text-left outline-offset-[-3px] hover:bg-[#2b2822] lg:aria-[current=true]:border-[#ffcb7e] lg:aria-[current=true]:bg-[#352b20]"
               >
                 <span className="truncate text-sm font-bold">{entry.title}</span>
                 <span className="text-xs text-[#c0b5a7]">{captureDestination(entry.aiSuggestion)}</span>
-              </button>
+              </Link>
             </li>
           ))}
         </ul>
       </aside>
-      <section id="capture-review" aria-label="Revisión de entrada" className="min-w-0 rounded-lg border border-[#423c35] bg-[#1e1b17]">
+      <section id="capture-review" aria-label="Revisión de entrada" className={`min-w-0 rounded-lg border border-[#423c35] bg-[#1e1b17] ${openEntry ? "" : "hidden lg:block"}`}>
         {selected ? (
           <>
             <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[#423c35] px-4 py-4 sm:px-6">
@@ -98,6 +110,7 @@ export default function CaptureInbox() {
               </article>
               <ReviewForm
                 key={selected.id}
+                entryId={selected.id}
                 suggestion={suggestionFor(selected)}
                 isSuggested={!!selected.aiSuggestion}
                 accounts={finance.accounts}
@@ -105,7 +118,7 @@ export default function CaptureInbox() {
                 today={today}
                 applyError={capture.errors.get(selected.id)}
                 onApply={(action) => capture.confirmEntry(selected.id, action)}
-                onOpenModule={(destination) => router.push(workspaceHref(destination))}
+                onOpenModule={(destination) => router.push(workspaceHref(destination) + "?" + new URLSearchParams({ desdeEntrada: selected.id }))}
               />
             </div>
           </>
