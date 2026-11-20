@@ -3,7 +3,14 @@
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { compareDateOnly, getSubjectPath, getTaskAvailableDeliverables, getTaskAvailablePhases, isActiveTask, taskPriorities, taskStatuses, type Subject, type SubjectDeliverable, type SubjectPhase, type Task, type TaskDraft, type TaskPriority, type TaskStatus } from "../../lib/tasks";
 import { controlClass, FieldLabel, formatDate, getPhaseLabel, getPriorityLabel, getStatusLabel, getSubjectTreeItems, SubjectChips, TaskBadge, TaskEmptyState } from "./task-ui";
+import ui from "../../components/workspace-screen.module.css";
 import type { TaskPatch } from "./task-operations";
+
+const buttonClass = `${ui.button} h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30`;
+const primaryButtonClass = `${ui.button} ${ui.primary} h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40`;
+const closeButtonClass = `${ui.button} ${ui.iconButton} flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30`;
+const titleInputClass = `${ui.control} h-12 min-w-0 rounded-lg border border-[#33435f] bg-[#0c1320] px-4 text-base font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#6d7b97] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20`;
+const readOnlyFieldClass = `${ui.inset} rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2`;
 
 export function TaskEditModal({
   task,
@@ -73,7 +80,7 @@ export function TaskEditModal({
         <div className="flex items-center justify-between gap-4 border-b border-[#263852] px-4 py-4 sm:px-5">
           <div className="min-w-0">
             <p className="text-xs font-black uppercase text-[#8ab4f8]">Detalle de tarea</p>
-            <h3 id={titleId} className="mt-1 break-words text-xl font-black text-[#eef4ff]">
+            <h3 id={titleId} className={embedded ? `${ui.panelTitle} mt-1 break-words` : "mt-1 break-words text-xl font-black text-[#eef4ff]"}>
               {task.title}
             </h3>
           </div>
@@ -81,9 +88,9 @@ export function TaskEditModal({
             type="button"
             onClick={handleClose}
             aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+            className={closeButtonClass}
           >
-            x
+            ×
           </button>
         </div>
 
@@ -100,7 +107,7 @@ export function TaskEditModal({
           {embedded && !isEditing ? (
             <div className="flex flex-wrap items-center justify-between gap-2 border-y border-[#263852] py-3">
               <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
-              <button type="button" onClick={() => setIsSubjectPickerOpen(true)} className="min-h-11 rounded-md bg-[#b4cdf5] px-3 text-sm font-bold text-[#101922] hover:bg-[#d1e2fc]">
+              <button type="button" onClick={() => setIsSubjectPickerOpen(true)} className={`${ui.button} ${ui.primary} min-h-11 rounded-md bg-[#b4cdf5] px-3 text-sm font-bold text-[#101922] hover:bg-[#d1e2fc]`}>
                 Asignar asuntos
               </button>
             </div>
@@ -111,7 +118,7 @@ export function TaskEditModal({
                 value={edited.title}
                 onChange={(event) => patchDraft({ title: event.target.value })}
                 aria-label="Título de la tarea"
-                className="h-12 min-w-0 rounded-lg border border-[#33435f] bg-[#0c1320] px-4 text-base font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#6d7b97] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
+                className={titleInputClass}
               />
 
               <textarea
@@ -120,19 +127,19 @@ export function TaskEditModal({
                 rows={4}
                 aria-label="Notas"
                 placeholder="Notas"
-                className="w-full resize-none rounded-md border border-[#2f3e59] bg-[#101827] px-3 py-2 text-sm text-[#cbd7ee] outline-none transition placeholder:text-[#61708d] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
+                className={`${ui.control} w-full resize-none rounded-md border border-[#2f3e59] bg-[#101827] px-3 py-2 text-sm text-[#cbd7ee] outline-none transition placeholder:text-[#61708d] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20`}
               />
             </>
           ) : (
             <>
               {!embedded ? (
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-4 py-3">
+                <div className={`${ui.inset} rounded-lg border border-[#2f3e59] bg-[#101827] px-4 py-3`}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Título</p>
                   <p className="mt-1 text-base font-semibold text-[#eef4ff]">{task.title}</p>
                 </div>
               ) : null}
 
-              <div className="min-h-24 rounded-lg border border-[#2f3e59] bg-[#101827] px-4 py-3">
+              <div className={`${ui.inset} min-h-24 rounded-lg border border-[#2f3e59] bg-[#101827] px-4 py-3`}>
                 <p className="text-[11px] font-bold uppercase text-[#8090ad]">Notas</p>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-[#cbd7ee]">
                   {task.notes || "Sin notas"}
@@ -219,7 +226,7 @@ export function TaskEditModal({
                     }
                     className={controlClass}
                   >
-                    <option value="">Directamente en el asunto</option>
+                    <option value="">{embedded ? "Sin fase" : "Directamente en el asunto"}</option>
                     {availablePhases.map((phase) => (
                       <option key={phase.id} value={phase.id}>
                         {getSubjectPath(subjects, phase.subjectId)} · {phase.name}
@@ -246,12 +253,12 @@ export function TaskEditModal({
                 </FieldLabel>
 
                 <FieldLabel label="Asuntos">
-                  <div className="grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3">
+                  <div className={`${ui.inset} grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3`}>
                     <SubjectChips subjects={subjects} subjectIds={edited.subjectIds} />
                     <button
                       type="button"
                       onClick={() => setIsSubjectPickerOpen(true)}
-                      className="h-10 w-fit rounded-md border border-[#344562] px-3 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+                      className={`${ui.button} h-10 w-fit rounded-md border border-[#344562] px-3 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30`}
                     >
                       Añadir asuntos
                     </button>
@@ -260,13 +267,13 @@ export function TaskEditModal({
               </>
             ) : (
               <>
-                {!embedded ? <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                {!embedded ? <div className={readOnlyFieldClass}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Estado</p>
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
                     {getStatusLabel(task.status)}
                   </p>
                 </div> : null}
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                <div className={readOnlyFieldClass}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Entregable</p>
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
                     {selectedDeliverable?.name ?? "Sin entregable"}
@@ -277,31 +284,31 @@ export function TaskEditModal({
                     </p>
                   ) : null}
                 </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                <div className={readOnlyFieldClass}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Depende de</p>
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
                     {parentTask?.title ?? "Tarea raiz"}
                   </p>
                 </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                <div className={readOnlyFieldClass}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Hacer el</p>
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
                     {task.hacerEl ? formatDate(task.hacerEl) : "Sin fecha"}
                   </p>
                 </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                <div className={readOnlyFieldClass}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Vence el</p>
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
                     {task.venceEl ? formatDate(task.venceEl) : "Sin fecha"}
                   </p>
                 </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                <div className={readOnlyFieldClass}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Prioridad</p>
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
                     {getPriorityLabel(task.priority)}
                   </p>
                 </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                <div className={readOnlyFieldClass}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Fase</p>
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
                     {getPhaseLabel(phases, task.phaseId)}
@@ -312,7 +319,7 @@ export function TaskEditModal({
                     </p>
                   ) : null}
                 </div>
-                {!embedded ? <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
+                {!embedded ? <div className={readOnlyFieldClass}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Asuntos</p>
                   <div className="mt-2">
                     <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
@@ -331,13 +338,13 @@ export function TaskEditModal({
                 onDelete(task.id);
                 handleClose();
               }}
-              className="h-10 rounded-md border border-[#55352f] px-4 text-sm font-bold text-[#ff9d88] transition hover:border-[#7a3d32] hover:bg-[#2e1716] focus:outline-none focus:ring-2 focus:ring-[#ff9d88]/30"
+              className={`${ui.button} ${ui.danger} h-10 rounded-md border border-[#55352f] px-4 text-sm font-bold text-[#ff9d88] transition hover:border-[#7a3d32] hover:bg-[#2e1716] focus:outline-none focus:ring-2 focus:ring-[#ff9d88]/30`}
             >
               Borrar
             </button>
             {isEditing ? (
               <>
-              <button type="button" onClick={() => { setDraft(null); setError(""); }} className="min-h-10 px-3 text-sm font-semibold text-[#c9d6e8] hover:bg-[#182238]">Cancelar</button>
+              <button type="button" onClick={() => { setDraft(null); setError(""); }} className={`${ui.button} min-h-10 px-3 text-sm font-semibold text-[#c9d6e8] hover:bg-[#182238]`}>Cancelar</button>
               <button
                 type="button"
                 disabled={!edited.title.trim()}
@@ -349,7 +356,7 @@ export function TaskEditModal({
                   if (draft && Object.keys(draft).length) onPatch(task.id, draft);
                   setDraft(null);
                 }}
-                className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
+                className={primaryButtonClass}
               >
                 Guardar cambios
               </button>
@@ -361,14 +368,14 @@ export function TaskEditModal({
                   onClick={() => {
                     setDraft({});
                   }}
-                  className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+                  className={buttonClass}
                 >
                   Editar
                 </button>
                 {!embedded ? <button
                   type="button"
                   onClick={handleClose}
-                  className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
+                  className={primaryButtonClass}
                 >
                   Cerrar
                 </button> : null}
@@ -410,7 +417,7 @@ export function TaskEditModal({
       aria-modal="true"
       aria-labelledby={titleId}
     >
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-lg border border-[#31415e] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]">{content}</div>
+      <div className={`${ui.dialog} max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-lg border border-[#31415e] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]`}>{content}</div>
     </div>
   );
 }
@@ -465,7 +472,7 @@ function TaskSubjectPickerModal({
   return (
     <dialog
       ref={dialogRef}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto rounded-lg border border-[#31415e] bg-[#111a2b] text-[#eef4ff] shadow-2xl backdrop:bg-[#050812]/75"
+      className={`${ui.dialog} m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto rounded-lg border border-[#31415e] bg-[#111a2b] text-[#eef4ff] shadow-2xl backdrop:bg-[#050812]/75`}
       aria-labelledby={titleId}
       onKeyDown={(event) => { if (event.key === "Escape") event.stopPropagation(); }}
       onCancel={(event) => { event.preventDefault(); handleClose(); }}
@@ -480,14 +487,14 @@ function TaskSubjectPickerModal({
             type="button"
             onClick={handleClose}
             aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+            className={closeButtonClass}
           >
             x
           </button>
         </div>
 
         <div className="grid gap-4 p-4 sm:p-5">
-          <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-3">
+          <div className={`${ui.inset} rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-3`}>
             {subjects.length === 0 ? (
               <TaskEmptyState label="Sin asuntos todavia." />
             ) : (
@@ -513,7 +520,7 @@ function TaskSubjectPickerModal({
             )}
           </div>
 
-          <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-3">
+          <div className={`${ui.inset} rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-3`}>
             <p className="text-[11px] font-bold uppercase text-[#8090ad]">Seleccionados</p>
             <div className="mt-2">
               <SubjectChips subjects={subjects} subjectIds={draftSubjectIds} />
@@ -533,7 +540,7 @@ function TaskSubjectPickerModal({
             <button
               type="button"
               onClick={handleClose}
-              className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+              className={buttonClass}
             >
               Cancelar
             </button>
@@ -544,7 +551,7 @@ function TaskSubjectPickerModal({
                 if (message) setError(message);
                 else dialogRef.current?.close();
               }}
-              className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
+              className={primaryButtonClass}
             >
               Guardar asuntos
             </button>
@@ -630,7 +637,7 @@ export function TaskCreateModal({
       aria-modal="true"
       aria-labelledby="new-task-title"
     >
-      <div className="w-full max-w-3xl rounded-lg border border-[#31415e] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]">
+      <div className={`${ui.dialog} w-full max-w-3xl rounded-lg border border-[#31415e] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]`}>
         <div className="flex items-center justify-between gap-4 border-b border-[#263852] px-4 py-4 sm:px-5">
           <div>
             <p className="text-xs font-black uppercase text-[#8ab4f8]">Nueva tarea</p>
@@ -642,7 +649,7 @@ export function TaskCreateModal({
             type="button"
             onClick={handleClose}
             aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+            className={closeButtonClass}
           >
             x
           </button>
@@ -657,7 +664,7 @@ export function TaskCreateModal({
             placeholder="Titulo de la tarea"
             aria-label="Titulo de la nueva tarea"
             autoFocus
-            className="h-12 min-w-0 rounded-lg border border-[#33435f] bg-[#0c1320] px-4 text-base font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#6d7b97] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
+            className={titleInputClass}
           />
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -749,12 +756,12 @@ export function TaskCreateModal({
             </FieldLabel>
 
             <FieldLabel label="Asuntos">
-              <div className="grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3">
+              <div className={`${ui.inset} grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3`}>
                 <SubjectChips subjects={subjects} subjectIds={selectedSubjectIds} />
                 <button
                   type="button"
                   onClick={() => setIsSubjectPickerOpen(true)}
-                  className="h-10 w-fit rounded-md border border-[#344562] px-3 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+                  className={`${ui.button} h-10 w-fit rounded-md border border-[#344562] px-3 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30`}
                 >
                   Agregar asuntos
                 </button>
@@ -766,13 +773,13 @@ export function TaskCreateModal({
             <button
               type="button"
               onClick={handleClose}
-              className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+              className={buttonClass}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
+              className={primaryButtonClass}
             >
               Crear tarea
             </button>

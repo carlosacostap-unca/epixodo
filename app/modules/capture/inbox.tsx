@@ -8,6 +8,7 @@ import { inboxHref, workspaceHref } from "../../lib/module-navigation";
 import type { Task, TaskAiSuggestion } from "../../lib/tasks";
 import { capturedText } from "./actions";
 import ReviewForm, { captureDestination } from "./review-form";
+import ui from "../../components/workspace-screen.module.css";
 import styles from "./capture.module.css";
 
 const captureDate = new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short" });
@@ -48,65 +49,65 @@ export default function CaptureInbox({ entryId }: { entryId?: string }) {
 
   if (capture.entries.length === 0) {
     return (
-      <section className="rounded-lg border border-dashed border-[#574d41] bg-[#191815] px-5 py-12 text-center">
-        <h2 className="font-serif text-3xl tracking-tight">Bandeja al día</h2>
-        <Link href={workspaceHref("capture")} className="mt-4 inline-flex min-h-11 items-center font-semibold text-[#ffd08a] underline underline-offset-4">Guardar una entrada</Link>
+      <section className={`${ui.panel} px-5 py-12 text-center`}>
+        <h2 className={ui.panelTitle}>Bandeja al día</h2>
+        <Link href={workspaceHref("capture")} className={`${ui.button} ${ui.primary} mt-4`}>Guardar una entrada</Link>
       </section>
     );
   }
 
   return (
-    <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]">
+    <div className="grid min-w-0 gap-3 sm:gap-5 lg:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]">
       {syncPending ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-[#ffd08a] lg:col-span-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-(--accent) lg:col-span-2">
           <span role="status">Cambios pendientes de sincronizar</span>
           {syncError ? <button type="button" onClick={retrySync} className="min-h-11 px-2 underline underline-offset-4">Reintentar</button> : null}
         </div>
       ) : null}
-      {openEntry ? <Link href={inboxHref()} className="inline-flex min-h-11 items-center font-semibold text-[#ffd08a] lg:hidden">← Volver a Bandeja</Link> : null}
-      <aside aria-label="Cola de Bandeja" className={`self-start overflow-hidden rounded-lg border border-[#423c35] bg-[#191815] ${openEntry ? "hidden lg:block" : ""}`}>
-        <div className="border-b border-[#423c35] p-3">
-          <label className="grid gap-2 text-sm font-semibold text-[#c0b5a7]">
+      {openEntry ? <Link href={inboxHref()} className={`${ui.backLink} inline-flex justify-self-start lg:hidden`}><span aria-hidden="true">←</span> Volver a Bandeja</Link> : null}
+      <aside aria-label="Cola de Bandeja" className={`${ui.panel} self-start ${openEntry ? "hidden lg:block" : ""}`}>
+        <div className="border-b border-(--workspace-border) p-3">
+          <label className={ui.label}>
             Buscar entradas
-            <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} className="min-h-11 min-w-0 border border-[#574d41] bg-[#151412] px-3 text-base text-[#f5eee3]" />
+            <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} className={`${ui.control} w-full px-3`} />
           </label>
-          <p role="status" className="mt-2 text-xs tabular-nums text-[#c0b5a7]">
+          <p role="status" className="mt-2 text-xs tabular-nums text-(--workspace-muted)">
             {filtered.length} {filtered.length === 1 ? "entrada" : "entradas"}{query ? ` de ${capture.entries.length}` : " por revisar"}
           </p>
         </div>
-        <ul className="divide-y divide-[#423c35] overflow-y-auto lg:max-h-[65dvh]">
+        <ul className="divide-y divide-(--workspace-border) overflow-y-auto lg:max-h-[65dvh]">
           {filtered.map((entry) => (
             <li key={entry.id}>
               <Link
                 href={inboxHref(entry.id)}
                 aria-current={entry.id === selected?.id ? "true" : undefined}
-                className="grid min-h-16 w-full min-w-0 gap-1 border-l-[3px] border-transparent px-3 py-2.5 text-left outline-offset-[-3px] hover:bg-[#2b2822] lg:aria-[current=true]:border-[#ffcb7e] lg:aria-[current=true]:bg-[#352b20]"
+                className={`${ui.selection} ${styles.queueItem} grid min-h-16 w-full min-w-0 gap-1 px-3 py-2.5 text-left outline-offset-[-3px]`}
               >
                 <span className="truncate text-sm font-bold">{entry.title}</span>
-                <span className="text-xs text-[#c0b5a7]">{captureDestination(entry.aiSuggestion)}</span>
+                <span className="text-xs text-(--workspace-muted)">{captureDestination(entry.aiSuggestion)}</span>
               </Link>
             </li>
           ))}
         </ul>
       </aside>
-      <section id="capture-review" aria-label="Revisión de entrada" className={`min-w-0 rounded-lg border border-[#423c35] bg-[#1e1b17] ${openEntry ? "" : "hidden lg:block"}`}>
+      <section id="capture-review" aria-label="Revisión de entrada" className={`${ui.panel} ${openEntry ? "" : "hidden lg:block"}`}>
         {selected ? (
           <>
-            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[#423c35] px-4 py-4 sm:px-6">
+            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-(--workspace-border) px-4 py-4 sm:px-6">
               <div className="min-w-0">
                 {selectedDate && Number.isFinite(selectedDate.valueOf()) ? (
-                  <time dateTime={selected.createdAt} className="font-mono text-xs text-[#c0b5a7]">{captureDate.format(selectedDate)}</time>
+                  <time dateTime={selected.createdAt} className="font-mono text-xs text-(--workspace-muted)">{captureDate.format(selectedDate)}</time>
                 ) : null}
-                <h2 className="mt-1 break-words font-serif text-3xl leading-tight tracking-tight">{selected.title}</h2>
+                <h2 className={`${ui.panelTitle} mt-1 break-words`}>{selected.title}</h2>
               </div>
               <button type="button" onClick={() => {
                 if (window.confirm(`¿Descartar «${selected.title}» de Bandeja?`)) capture.discardEntry(selected.id);
-              }} className="min-h-11 px-3 text-sm font-semibold text-[#e4aa9b] hover:bg-[#332520]">Descartar entrada</button>
+              }} className={`${ui.button} ${ui.danger}`}>Descartar entrada</button>
             </header>
             <div className="grid items-start gap-5 p-4 sm:p-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-              <article className={`${styles.paper} min-w-0 rounded-md border border-[#423c35] bg-[#191815] px-4 py-4 pl-10`}>
-                <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-[#ffd08a]">Texto capturado</h3>
-                <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[#e3d9cd]">{capturedText(selected)}</p>
+              <article className={`${styles.paper} min-w-0 rounded-lg border border-(--workspace-border) bg-(--workspace-inset) py-4 pl-10 pr-4`}>
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-(--accent)">Texto capturado</h3>
+                <p className="whitespace-pre-wrap break-words text-sm leading-6 text-(--workspace-ink)">{capturedText(selected)}</p>
               </article>
               <ReviewForm
                 key={selected.id}
@@ -123,7 +124,7 @@ export default function CaptureInbox({ entryId }: { entryId?: string }) {
             </div>
           </>
         ) : (
-          <p className="px-5 py-8 text-sm text-[#c0b5a7]">No hay entradas que coincidan con la búsqueda.</p>
+          <p className="px-5 py-8 text-sm text-(--workspace-muted)">No hay entradas que coincidan con la búsqueda.</p>
         )}
       </section>
     </div>

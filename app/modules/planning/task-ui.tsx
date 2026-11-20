@@ -1,3 +1,4 @@
+import ui from "../../components/workspace-screen.module.css";
 import { getHorizonLabel, getSubjectPath, taskPriorities, taskStatuses, type Subject, type SubjectPhase, type Task, type TaskPriority, type TaskStatus } from "../../lib/tasks";
 
 type SubjectTreeItem = {
@@ -177,7 +178,7 @@ export function FieldLabel({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#8090ad]">
+    <label className={`${ui.label} grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#8090ad]`}>
       {label}
       {children}
     </label>
@@ -185,7 +186,7 @@ export function FieldLabel({
 }
 
 export const controlClass =
-  "h-11 w-full rounded-xl border border-[#324968] bg-[#0b1726] px-3 text-sm font-normal normal-case tracking-normal text-[#dce6f8] outline-none transition placeholder:text-[#61708d] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15";
+  `${ui.control} h-11 w-full rounded-xl border border-[#324968] bg-[#0b1726] px-3 text-sm font-normal normal-case tracking-normal text-[#dce6f8] outline-none transition placeholder:text-[#61708d] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15`;
 
 export function SubjectChips({ subjects, subjectIds }: { subjects: Subject[]; subjectIds: string[] }) {
   const labels = subjectLabels(subjects, subjectIds);

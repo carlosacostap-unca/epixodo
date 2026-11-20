@@ -3,6 +3,7 @@
 import Link from "next/link";
 import ViewIcon from "../../components/view-icon";
 import { useWorkspace, WorkspaceLoading } from "../../components/workspace-provider";
+import ui from "../../components/workspace-screen.module.css";
 import { workspaceHref } from "../../lib/module-navigation";
 import CaptureComposer from "./composer";
 import CaptureInbox from "./inbox";
@@ -14,19 +15,22 @@ export default function CaptureScreen({ reviewing, entryId }: { reviewing: boole
 
   const active = reviewing ? "inbox" : "capture";
   const count = workspace.capture.entries.length;
+  const title = reviewing ? "Bandeja" : "Captura";
+  const showEntry = reviewing && workspace.capture.entries.some((entry) => entry.id === entryId);
 
   return (
-    <main className={`${styles.screen} flex-1 px-4 pb-12 pt-7 sm:px-8 sm:pt-12`}>
-      <div className={`mx-auto ${reviewing ? "max-w-7xl" : "max-w-3xl"}`}>
-        <header className="mb-6 flex flex-wrap items-end justify-between gap-5 border-b border-[#423c35] pb-5 sm:mb-8">
-          <h1 className="font-serif text-5xl leading-none tracking-[-0.055em] sm:text-7xl">{reviewing ? "Bandeja" : "Captura"}</h1>
-          <nav aria-label="Vistas de Captura" className="flex flex-wrap gap-1 rounded-lg border border-[#423c35] bg-[#191815] p-1">
+    <main className={`${ui.screen} ${styles.capture}`}>
+      <div className={ui.frame}>
+        {showEntry ? <h1 className="sr-only lg:hidden">{title}</h1> : null}
+        <header className={`${ui.header} ${showEntry ? "hidden lg:block" : ""}`}>
+          <div className={ui.heading}><h1 className={ui.title}>{title}</h1></div>
+          <nav aria-label="Vistas de Captura" className={ui.tabs}>
             {(["capture", "inbox"] as const).map((view) => (
               <Link
                 key={view}
                 href={workspaceHref(view)}
                 aria-current={active === view ? "page" : undefined}
-                className="flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold text-[#c0b5a7] hover:bg-[#2b2822] aria-[current=page]:bg-[#352b20] aria-[current=page]:text-[#ffd08a]"
+                className={ui.tab}
               >
                 <ViewIcon view={view} />
                 {view === "capture" ? "Nueva entrada" : "Bandeja"}
@@ -35,7 +39,9 @@ export default function CaptureScreen({ reviewing, entryId }: { reviewing: boole
             ))}
           </nav>
         </header>
-        {reviewing ? <CaptureInbox entryId={entryId} /> : <CaptureComposer onCapture={workspace.capture.addEntry} />}
+        {reviewing ? <CaptureInbox entryId={entryId} /> : (
+          <div className="max-w-3xl"><CaptureComposer onCapture={workspace.capture.addEntry} /></div>
+        )}
       </div>
     </main>
   );

@@ -1,14 +1,15 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
+import ui from "../../components/workspace-screen.module.css";
 import { useWorkspaceDraft } from "../../components/workspace-provider";
 import { minorAmountToInput, parseMinorAmount, type FinanceAccount } from "../../lib/finance";
 import type { CaptureAction } from "./actions";
 import { mealTypes, milliValueToInput, parseMilliValue, type NutritionIntakeDraft } from "../../lib/nutrition";
 import { taskPriorities, type Subject, type TaskAiSuggestion, type TaskPriority } from "../../lib/tasks";
 
-const fieldClass = "h-10 w-full rounded-lg border border-[#574d41] bg-[#191815] px-3 text-sm font-semibold text-[#f5eee3] outline-none transition placeholder:text-[#a59a89] focus:border-[#ffcb7e] focus:ring-2 focus:ring-[#ffcb7e]/15";
-const labelClass = "grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#c0b5a7]";
+const fieldClass = `${ui.control} w-full px-3`;
+const labelClass = ui.label;
 
 const labels: Record<TaskAiSuggestion["type"], { module: string; title: string; action: string }> = {
   task: { module: "Planificación", title: "Tarea sugerida", action: "Convertir en tarea" },
@@ -105,8 +106,8 @@ export default function ReviewForm({ entryId, suggestion, accounts, subjects, to
 
   return (
     <form onSubmit={submit} aria-label={formName}>
-      <h3 className="font-serif text-2xl tracking-tight text-[#f5eee3]">{formName}</h3>
-      <p className="mt-1 text-sm text-[#c0b5a7]">Destino · <strong className="font-medium text-[#ffd08a]">{meta.module}</strong></p>
+      <h3 className={ui.panelTitle}>{formName}</h3>
+      <p className="mt-1 text-sm text-(--workspace-muted)">Destino · <strong className="font-medium text-(--accent)">{meta.module}</strong></p>
 
       {requiresAccount && compatibleAccounts.length === 0 ? <MissingDependency title={`Falta una cuenta en ${suggestion.currency}`} action="Abrir Finanzas" onClick={() => onOpenModule("finances")} /> : null}
       {needsSubject && subjects.length === 0 ? <MissingDependency title="Falta crear un asunto" action="Abrir Asuntos" onClick={() => onOpenModule("subjects")} /> : null}
@@ -122,7 +123,7 @@ export default function ReviewForm({ entryId, suggestion, accounts, subjects, to
           ) : null}
           {(suggestion.type === "task" || suggestion.type === "subject_event") ? <Select label="Asunto" value={subjectId} onChange={setSubjectId}><option value="">Sin asunto</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</Select> : null}
           <SuggestionFields suggestion={suggestion} fields={fields} set={set} />
-          <button type="submit" className="min-h-11 justify-self-start rounded-lg bg-[#ffcb7e] px-4 py-2.5 text-sm font-bold text-[#21180d] transition hover:bg-[#ffd08a] sm:col-span-2">{meta.action}</button>
+          <button type="submit" className={`${ui.button} ${ui.primary} justify-self-start sm:col-span-2`}>{meta.action}</button>
         </div>
       ) : null}
       {error || applyError ? <p role="alert" className="mt-3 rounded-lg border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm font-semibold text-[#ffafa5]">{error || applyError}</p> : null}
@@ -149,7 +150,7 @@ function Select({ label, value, onChange, children }: { label: string; value: st
 }
 
 function MissingDependency({ title, action, onClick }: { title: string; action: string; onClick: () => void }) {
-  return <div className="relative mt-4 rounded-xl border border-[#735d35] bg-[#2b2417] px-4 py-3"><p className="text-sm font-bold text-[#f6c177]">{title}</p><button type="button" onClick={onClick} className="mt-3 rounded-lg border border-[#8c7547] px-3 py-2 text-xs font-black text-[#f6c177] transition hover:bg-[#3a301e]">{action}</button></div>;
+  return <div className="mt-4 rounded-lg border border-[#735d35] bg-[#2b2417] px-4 py-3"><p className="text-sm font-bold text-[#f6c177]">{title}</p><button type="button" onClick={onClick} className={`${ui.button} mt-3`}>{action}</button></div>;
 }
 
 function suggestionFields(suggestion: TaskAiSuggestion, today: string): Record<string, string> {
