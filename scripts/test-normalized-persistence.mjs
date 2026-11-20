@@ -137,7 +137,11 @@ nextWorkspace.idealDayGoals = nextWorkspace.idealDayGoals.filter((goal) => goal.
 nextWorkspace.idealDayGoals[0].title = "Caminar por el parque";
 nextWorkspace.idealDayGoals[0].completed = false;
 nextWorkspace.locationEntries = [];
-nextWorkspace.tasks.push({ ...nextWorkspace.tasks[0], id: "task-2", title: "Nueva", subjectIds: [] });
+nextWorkspace.tasks.push({
+  ...nextWorkspace.tasks[0],
+  id: "task-2", title: "Tarea revisada", subjectIds: [], phaseId: null, deliverableId: null,
+  hacerEl: null, venceEl: null, aiSuggestion: null, inboxReviewed: true,
+});
 failingCollection = "tasks";
 await assert.rejects(() => saveNormalizedWorkspace(request, owner, nextWorkspace), /Injected tasks failure/);
 assert.equal(db.get("location_entries").some((item) => item.client_id === "location-1"), true, "a failed upsert must not delete stale records");
@@ -146,7 +150,9 @@ assert.equal(db.get("ideal_day_goals").some((item) => item.client_id === "ideal-
 failingCollection = null;
 await saveNormalizedWorkspace(request, owner, nextWorkspace);
 assert.equal(db.get("location_entries").some((item) => item.client_id === "location-1"), false, "successful retry must delete stale records");
-assert.equal((await getNormalizedWorkspace(request, owner)).tasks.length, 2);
+const afterRetry = await getNormalizedWorkspace(request, owner);
+assert.equal(afterRetry.tasks.length, 2);
+assert.deepEqual(afterRetry.tasks.find(({ id }) => id === "task-2"), nextWorkspace.tasks[1]);
 assert.equal(db.get("ideal_day_goals").some((item) => item.client_id === "ideal-goal-1"), false);
 assert.deepEqual((await getNormalizedWorkspace(request, owner)).idealDayGoals, nextWorkspace.idealDayGoals);
 db.get("ideal_day_goals").push({ id: "foreign-goal-record", owner: "owner-2", client_id: "foreign-goal", goal_date: "2026-11-07", title: "Private", completed: false });

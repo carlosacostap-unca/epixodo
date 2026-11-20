@@ -1,4 +1,4 @@
-import type { Expectation, TaskAiSuggestion, WorkspaceData } from "./tasks";
+import type { Expectation, Task, TaskAiSuggestion, WorkspaceData } from "./tasks";
 
 type RequestOptions = { method?: string; body?: unknown; auth?: boolean };
 export type PocketBaseRequester = <T>(path: string, options?: RequestOptions) => Promise<T>;
@@ -80,6 +80,8 @@ function asStringArray(value: unknown) {
 }
 
 const taskSuggestionMarker = /\n\n<!-- epixodo-ai-suggestion:([^\s]+) -->$/;
+const taskReviewedSuffix = "\n\n<!-- epixodo-inbox-reviewed -->";
+const taskLiteralSuffix = "\n\n<!-- epixodo-inbox-literal -->";
 const expectationMarker = /^<!-- epixodo-expectation:([^\s]+) -->$/;
 
 function normalizeStoredTaskSuggestion(value: unknown): TaskAiSuggestion | null {
@@ -95,22 +97,35 @@ function normalizeStoredTaskSuggestion(value: unknown): TaskAiSuggestion | null 
     : null;
 }
 
-function encodeTaskNotes(notes: string, suggestion: TaskAiSuggestion | null) {
-  if (!suggestion) return notes;
-  return `${notes}\n\n<!-- epixodo-ai-suggestion:${encodeURIComponent(JSON.stringify(suggestion))} -->`;
+function encodeTaskNotes({ notes, aiSuggestion, inboxReviewed }: Task) {
+  const suggestion = aiSuggestion
+    ? `\n\n<!-- epixodo-ai-suggestion:${encodeURIComponent(JSON.stringify(aiSuggestion))} -->`
+    : "";
+  if (inboxReviewed) return notes + suggestion + taskReviewedSuffix;
+  const encoded = notes + suggestion;
+  return encoded.endsWith(taskReviewedSuffix) || encoded.endsWith(taskLiteralSuffix)
+    ? encoded + taskLiteralSuffix
+    : encoded;
 }
 
-function decodeTaskNotes(value: string) {
+function decodeTaskNotes(stored: string): Pick<Task, "notes" | "aiSuggestion" | "inboxReviewed"> {
+  if (stored.endsWith(taskLiteralSuffix)) {
+    return { notes: stored.slice(0, -taskLiteralSuffix.length), aiSuggestion: null };
+  }
+  const reviewed = stored.endsWith(taskReviewedSuffix);
+  const metadata = reviewed ? { inboxReviewed: true } as const : {};
+  const value = reviewed ? stored.slice(0, -taskReviewedSuffix.length) : stored;
   const match = value.match(taskSuggestionMarker);
-  if (!match) return { notes: value, aiSuggestion: null };
+  if (!match) return { notes: value, aiSuggestion: null, ...metadata };
 
   try {
     return {
       notes: value.slice(0, match.index).trimEnd(),
       aiSuggestion: normalizeStoredTaskSuggestion(JSON.parse(decodeURIComponent(match[1]))),
+      ...metadata,
     };
   } catch {
-    return { notes: value, aiSuggestion: null };
+    return { notes: value, aiSuggestion: null, ...metadata };
   }
 }
 
@@ -275,7 +290,7 @@ export async function getNormalizedWorkspace(
       return {
       id: record.client_id,
       title: text(record, "title"),
-      notes: decodedNotes.notes,
+      ...decodedNotes,
       status: text(record, "status") as WorkspaceData["tasks"][number]["status"],
       subjectIds: (taskSubjects.get(record.id) ?? []).sort(),
       phaseId: clientIdByRecordId.get(relation(record, "phase")) ?? null,
@@ -284,7 +299,6 @@ export async function getNormalizedWorkspace(
       hacerEl: optionalText(record, "do_on"),
       venceEl: optionalText(record, "due_on"),
       priority: text(record, "priority") as WorkspaceData["tasks"][number]["priority"],
-      aiSuggestion: decodedNotes.aiSuggestion,
       completedAt: optionalText(record, "completed_at")
         ? toIso(text(record, "completed_at"))
         : null,
@@ -573,7 +587,7 @@ export async function saveNormalizedWorkspace(
   result = await upsertRows(request, collections.tasks, ownerId, [...workspace.tasks.map((task) => ({
     client_id: task.id,
     title: task.title,
-    notes: encodeTaskNotes(task.notes, task.aiSuggestion),
+    notes: encodeTaskNotes(task),
     status: task.status,
     phase: task.phaseId ? requireRelation(phases, task.phaseId) : "",
     deliverable: task.deliverableId
@@ -590,7 +604,7 @@ export async function saveNormalizedWorkspace(
   result = await upsertRows(request, collections.tasks, ownerId, [...workspace.tasks.map((task) => ({
     client_id: task.id,
     title: task.title,
-    notes: encodeTaskNotes(task.notes, task.aiSuggestion),
+    notes: encodeTaskNotes(task),
     status: task.status,
     phase: task.phaseId ? requireRelation(phases, task.phaseId) : "",
     deliverable: task.deliverableId

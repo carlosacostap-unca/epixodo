@@ -323,17 +323,17 @@ assert.deepEqual(storage.loadWorkspace().financeDuePayments, normalized.financeD
 delete global.window;
 
 const financeViewSource = fs.readFileSync(
-  path.join(__dirname, "..", "app", "components", "finance-view.tsx"),
+  path.join(__dirname, "..", "app", "modules", "finance", "view.tsx"),
   "utf8",
 );
 assert.match(financeViewSource, /role="alert"/);
 assert.match(financeViewSource, /window\.confirm/);
 assert.match(financeViewSource, /disabled=\{currencyLocked\}/);
-assert.match(financeViewSource, /workspace\.updateFinanceEntry/);
+assert.match(financeViewSource, /finance\.updateEntry/);
 assert.match(financeViewSource, /Fecha de vencimiento/);
 assert.match(financeViewSource, /Sin cuenta definida/);
 assert.match(financeViewSource, /payment\.currency/);
-assert.match(financeViewSource, /workspace\.setFinanceDuePaymentState/);
-assert.match(financeViewSource, /workspace\.deleteFinanceDuePayment/);
+assert.match(financeViewSource, /finance\.setDuePaymentStatus/);
+assert.match(financeViewSource, /finance\.deleteDuePayment/);
 
 console.log("Finance domain, persistence, and interaction workflow tests passed.");

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import {
   AuthenticationError,
   SESSION_COOKIE_NAME,
@@ -114,3 +115,5 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> 
     return null;
   }
 }
+
+export const getPageUser = cache(getAuthenticatedUser);

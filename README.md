@@ -68,11 +68,12 @@ POCKETBASE_LEGACY_FALLBACK=true
 Set `POCKETBASE_LEGACY_FALLBACK=false` after the stabilization period. Do not
 delete the legacy record until a separate archival change has been approved.
 
-## Ingreso con IA
+## Captura y Bandeja
 
-El módulo Ingreso acepta texto o una nota de voz, la procesa del lado servidor y
-crea una tarea pendiente, sin asunto ni fechas, dentro de Bandeja. Configurá la
-clave únicamente en `.env.local` o en las variables del entorno de despliegue:
+Captura recibe texto o notas de voz y deja cada entrada en Bandeja para revisar
+su destino. Las tareas confirmadas que todavía requieren asignación se pueden
+consultar desde «Sin asunto» en Planificación. Configurá la clave únicamente en
+`.env.local` o en las variables del entorno de despliegue:
 
 ```bash
 OPENAI_API_KEY=sk-...

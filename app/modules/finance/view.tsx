@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import type { TaskWorkspace } from "../hooks/use-task-workspace";
+import { FormEvent, useState } from "react";
+import type { FinanceWorkspace } from "./workspace";
 import {
   financeAccountTypes,
   formatMoney,
@@ -17,10 +17,10 @@ import {
   type FinanceEntryKind,
   type FinanceDuePayment,
   type FinanceDuePaymentDraft,
-} from "../lib/finance";
+} from "../../lib/finance";
 
 const financeControlClass =
-  "h-11 w-full rounded-xl border border-[#324968] bg-[#091522] px-3 text-sm text-[#e8eef8] outline-none transition placeholder:text-[#61708d] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15";
+  "h-11 w-full rounded-xl border border-[#324968] bg-[#091522] px-3 text-sm text-[#e8eef8] outline-none transition placeholder:text-[#61708d] focus:border-[#d8bdf9] focus:ring-2 focus:ring-[#d8bdf9]/15";
 
 function FinanceField({
   label,
@@ -32,7 +32,7 @@ function FinanceField({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#8292ad]">
+    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#bba9ce]">
       {label}
       {children}
       {hint ? <span className="text-[11px] font-medium normal-case tracking-normal text-[#6f819e]">{hint}</span> : null}
@@ -53,10 +53,10 @@ function FinanceModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-[#030811]/80 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="finance-modal-title">
-      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-[#355071] bg-[#0d1928] shadow-[0_30px_100px_rgba(0,0,0,0.52)]">
-        <div className="flex items-center justify-between gap-4 border-b border-[#263b57] px-5 py-4">
+      <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-[#355071] bg-[#201a2e] shadow-[0_30px_100px_rgba(0,0,0,0.52)]">
+        <div className="flex items-center justify-between gap-4 border-b border-[#41374f] px-5 py-4">
           <div>
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">{eyebrow}</p>
+            <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#d8bdf9]">{eyebrow}</p>
             <h3 id="finance-modal-title" className="mt-1 text-xl font-black tracking-[-0.02em] text-[#f2f6fc]">{title}</h3>
           </div>
           <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#344c6d] text-lg font-bold text-[#b5c2d7] transition hover:bg-[#17283e]">×</button>
@@ -130,11 +130,11 @@ function AccountForm({
         <input inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} className={`${financeControlClass} font-mono`} />
       </FinanceField>
       {error ? <p role="alert" className="rounded-xl border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm font-semibold text-[#ff9d88]">{error}</p> : null}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#263b57] pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#41374f] pt-4">
         {onDelete ? <button type="button" onClick={onDelete} className="rounded-xl border border-[#713d3a] px-4 py-2.5 text-sm font-bold text-[#ff9d88] transition hover:bg-[#2e1716]">Eliminar cuenta</button> : <span />}
         <div className="flex gap-2">
           <button type="button" onClick={onClose} className="rounded-xl border border-[#344c6d] px-4 py-2.5 text-sm font-bold text-[#b8c5d9] transition hover:bg-[#17283e]">Cancelar</button>
-          <button type="submit" className="rounded-xl bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] transition hover:bg-[#a8c7ff]">Guardar cuenta</button>
+          <button type="submit" className="rounded-xl bg-[#d8bdf9] px-4 py-2.5 text-sm font-black text-[#07111f] transition hover:bg-[#a8c7ff]">Guardar cuenta</button>
         </div>
       </div>
     </form>
@@ -218,7 +218,7 @@ function EntryForm({
         <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Comida, trabajo, vivienda…" className={financeControlClass} />
       </FinanceField>
       {error ? <p role="alert" className="rounded-xl border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm font-semibold text-[#ff9d88]">{error}</p> : null}
-      <div className="flex justify-end gap-2 border-t border-[#263b57] pt-4">
+      <div className="flex justify-end gap-2 border-t border-[#41374f] pt-4">
         <button type="button" onClick={onClose} className="rounded-xl border border-[#344c6d] px-4 py-2.5 text-sm font-bold text-[#b8c5d9] transition hover:bg-[#17283e]">Cancelar</button>
         <button type="submit" className={`rounded-xl px-4 py-2.5 text-sm font-black transition ${kind === "income" ? "bg-[#63d3a5] text-[#071b14] hover:bg-[#8ce3bf]" : "bg-[#ff927d] text-[#28100d] hover:bg-[#ffb09f]"}`}>Guardar {kind === "income" ? "ingreso" : "egreso"}</button>
       </div>
@@ -317,7 +317,7 @@ function DuePaymentForm({
         <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Vivienda, servicios, impuestos…" className={financeControlClass} />
       </FinanceField>
       {error ? <p role="alert" className="rounded-xl border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm font-semibold text-[#ff9d88]">{error}</p> : null}
-      <div className="flex justify-end gap-2 border-t border-[#263b57] pt-4">
+      <div className="flex justify-end gap-2 border-t border-[#41374f] pt-4">
         <button type="button" onClick={onClose} className="rounded-xl border border-[#344c6d] px-4 py-2.5 text-sm font-bold text-[#b8c5d9] transition hover:bg-[#17283e]">Cancelar</button>
         <button type="submit" className="rounded-xl bg-[#f4c36a] px-4 py-2.5 text-sm font-black text-[#281b05] transition hover:bg-[#ffda8c]">Guardar pago</button>
       </div>
@@ -326,37 +326,34 @@ function DuePaymentForm({
 }
 
 export default function FinanceView({
-  workspace,
+  finance,
   searchQuery,
 }: {
-  workspace: TaskWorkspace;
+  finance: FinanceWorkspace;
   searchQuery: string;
 }) {
   const [accountModalId, setAccountModalId] = useState<string | "new" | null>(null);
   const [entryModal, setEntryModal] = useState<{ id: string | null; kind: FinanceEntryKind } | null>(null);
   const [duePaymentModalId, setDuePaymentModalId] = useState<string | "new" | null>(null);
   const selectedAccount = accountModalId && accountModalId !== "new"
-    ? workspace.financeAccounts.find((account) => account.id === accountModalId) ?? null
+    ? finance.accounts.find((account) => account.id === accountModalId) ?? null
     : null;
   const selectedEntry = entryModal?.id
-    ? workspace.financeEntries.find((entry) => entry.id === entryModal.id) ?? null
+    ? finance.entries.find((entry) => entry.id === entryModal.id) ?? null
     : null;
   const selectedDuePayment = duePaymentModalId && duePaymentModalId !== "new"
-    ? workspace.financeDuePayments.find((payment) => payment.id === duePaymentModalId) ?? null
+    ? finance.duePayments.find((payment) => payment.id === duePaymentModalId) ?? null
     : null;
-  const accountById = useMemo(
-    () => new Map(workspace.financeAccounts.map((account) => [account.id, account])),
-    [workspace.financeAccounts],
-  );
+  const { accountById } = finance;
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("es");
-  const visibleEntries = workspace.recentFinanceEntries.filter((entry) => {
+  const visibleEntries = finance.recentEntries.filter((entry) => {
     if (!normalizedQuery) return true;
     const account = accountById.get(entry.accountId);
     return `${entry.description} ${entry.category} ${account?.name ?? ""} ${entry.kind}`
       .toLocaleLowerCase("es")
       .includes(normalizedQuery);
   });
-  const visibleDuePayments = workspace.orderedFinanceDuePayments.filter((payment) => {
+  const visibleDuePayments = finance.orderedDuePayments.filter((payment) => {
     if (!normalizedQuery) return true;
     const account = payment.accountId ? accountById.get(payment.accountId) : null;
     return `${payment.description} ${payment.category} ${payment.currency} ${account?.name ?? "sin cuenta"} ${payment.status}`
@@ -364,56 +361,50 @@ export default function FinanceView({
       .includes(normalizedQuery);
   });
   const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(
-    new Date(`${workspace.today.slice(0, 7)}-01T12:00:00`),
+    new Date(`${finance.today.slice(0, 7)}-01T12:00:00`),
   );
 
   function confirmAccountDelete(account: FinanceAccount) {
-    const entryCount = workspace.financeEntries.filter((entry) => entry.accountId === account.id).length;
-    const paymentCount = workspace.financeDuePayments.filter((payment) => payment.accountId === account.id).length;
+    const entryCount = finance.entries.filter((entry) => entry.accountId === account.id).length;
+    const paymentCount = finance.duePayments.filter((payment) => payment.accountId === account.id).length;
     if (window.confirm(`Eliminar “${account.name}” también eliminará ${entryCount} ${entryCount === 1 ? "movimiento" : "movimientos"}. ${paymentCount} ${paymentCount === 1 ? "pago programado quedará" : "pagos programados quedarán"} sin cuenta asociada. Esta acción no se puede deshacer.`)) {
-      workspace.deleteFinanceAccount(account.id);
+      finance.deleteAccount(account.id);
       setAccountModalId(null);
     }
   }
 
   function confirmEntryDelete(entry: FinanceEntry) {
     if (window.confirm(`¿Eliminar el movimiento “${entry.description}”? El saldo se recalculará.`)) {
-      workspace.deleteFinanceEntry(entry.id);
+      finance.deleteEntry(entry.id);
     }
   }
 
   function confirmDuePaymentDelete(payment: FinanceDuePayment) {
     if (window.confirm(`¿Eliminar el pago “${payment.description}”? Esta acción no se puede deshacer.`)) {
-      workspace.deleteFinanceDuePayment(payment.id);
+      finance.deleteDuePayment(payment.id);
     }
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#315177] bg-[linear-gradient(135deg,#10233a,#0c1928)] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.16)] sm:p-5">
-        <div>
-          <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">Libro diario</p>
-          <p className="mt-1 text-sm text-[#92a3bb]">Registrá el movimiento; el saldo se actualiza solo.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setAccountModalId("new")} className="rounded-xl border border-[#3b5678] px-4 py-2.5 text-sm font-bold text-[#c4d0e1] transition hover:bg-[#182a42]">+ Cuenta</button>
+      <div role="group" aria-label="Registrar en Finanzas" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <button type="button" onClick={() => setAccountModalId("new")} className="rounded-xl border border-[#6e587f] px-4 py-2.5 text-sm font-bold text-[#ded3e9] transition hover:bg-[#342742]">+ Cuenta</button>
           <button type="button" onClick={() => setDuePaymentModalId("new")} className="rounded-xl border border-[#7d6330] bg-[#2c2415] px-4 py-2.5 text-sm font-black text-[#f4c36a] transition hover:-translate-y-0.5 hover:bg-[#3a2e19]">+ Pago pendiente</button>
-          <button type="button" disabled={workspace.financeAccounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "expense" })} className="rounded-xl border border-[#ff927d] bg-[#ff927d] px-4 py-2.5 text-sm font-black text-[#28100d] transition hover:-translate-y-0.5 hover:bg-[#ffb09f]">− Egreso</button>
-          <button type="button" disabled={workspace.financeAccounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "income" })} className="rounded-xl border border-[#63d3a5] bg-[#63d3a5] px-4 py-2.5 text-sm font-black text-[#071b14] transition hover:-translate-y-0.5 hover:bg-[#8ce3bf]">+ Ingreso</button>
-        </div>
+          <button type="button" disabled={finance.accounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "expense" })} className="rounded-xl border border-[#ff927d] bg-[#ff927d] px-4 py-2.5 text-sm font-black text-[#28100d] transition hover:-translate-y-0.5 hover:bg-[#ffb09f]">− Egreso</button>
+          <button type="button" disabled={finance.accounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "income" })} className="rounded-xl border border-[#63d3a5] bg-[#63d3a5] px-4 py-2.5 text-sm font-black text-[#071b14] transition hover:-translate-y-0.5 hover:bg-[#8ce3bf]">+ Ingreso</button>
       </div>
 
-      {workspace.financeSummaries.length > 0 ? (
-        <section aria-labelledby="finance-summary-title" className="overflow-hidden rounded-2xl border border-[#304a6c] bg-[#0b1725]">
-          <div className="grid gap-3 border-b border-[#263b57] px-4 py-4 sm:flex sm:items-end sm:justify-between sm:px-5">
-            <div><p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Estado por moneda</p><h3 id="finance-summary-title" className="mt-1 text-lg font-black text-[#edf3fb]">{monthLabel}</h3></div>
-            <p className="max-w-xs text-left text-xs leading-5 text-[#7185a3] sm:text-right">Cada moneda conserva su propia columna; no se aplican conversiones.</p>
+      {finance.summaries.length > 0 ? (
+        <section aria-labelledby="finance-summary-title" className="overflow-hidden rounded-sm border border-[#514461] border-t-4 border-t-[#d8bdf9] bg-[#1c1828]">
+          <div className="grid gap-3 border-b border-[#41374f] px-4 py-4 sm:flex sm:items-end sm:justify-between sm:px-5">
+            <h2 id="finance-summary-title" className="font-serif text-2xl tracking-tight text-[#f3eefb]">Saldos por moneda</h2>
+            <p className="font-mono text-xs text-[#aba0bc] first-letter:uppercase">{monthLabel}</p>
           </div>
-          <div className="divide-y divide-[#263b57]">
-            {workspace.financeSummaries.map((summary) => (
-              <div key={summary.currency} className="grid gap-4 px-4 py-5 sm:grid-cols-[72px_repeat(3,minmax(0,1fr))] sm:items-end sm:px-5">
-                <span className="w-fit rounded-lg border border-[#3f6089] bg-[#152a43] px-2.5 py-1 font-mono text-xs font-black tracking-[0.12em] text-[#a9c9f8]">{summary.currency}</span>
-                <div><p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#7185a3]">Saldo actual</p><p className="mt-1 font-mono text-xl font-black text-[#edf3fb]">{formatMoney(summary.balanceMinor, summary.currency)}</p></div>
+          <div className="divide-y divide-[#41374f]">
+            {finance.summaries.map((summary) => (
+              <div key={summary.currency} className="grid grid-cols-2 gap-4 px-4 py-5 sm:grid-cols-[72px_repeat(3,minmax(0,1fr))] sm:items-end sm:px-5">
+                <span className="w-fit self-start rounded-lg border border-[#625177] bg-[#302642] px-2.5 py-1 font-mono text-xs font-black tracking-[0.12em] text-[#e1d1fa]">{summary.currency}</span>
+                <div><p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#aba0bc]">Saldo actual</p><p className="mt-1 font-mono text-xl font-black text-[#f3eefb]">{formatMoney(summary.balanceMinor, summary.currency)}</p></div>
                 <div><p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#4fae88]">Ingresos del mes</p><p className="mt-1 font-mono text-lg font-black text-[#63d3a5]">+ {formatMoney(summary.incomeMinor, summary.currency)}</p></div>
                 <div><p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#d57565]">Egresos del mes</p><p className="mt-1 font-mono text-lg font-black text-[#ff927d]">− {formatMoney(summary.expenseMinor, summary.currency)}</p></div>
               </div>
@@ -421,26 +412,25 @@ export default function FinanceView({
           </div>
         </section>
       ) : (
-        <div className="grid min-h-52 place-items-center rounded-2xl border border-dashed border-[#344b69] bg-[#0d1725]/75 px-6 py-10 text-center"><div className="max-w-sm"><span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-[#365079] bg-[#132642] font-mono text-[#82afff]">$</span><h3 className="mt-4 text-base font-black text-[#dce6f5]">Tu primer saldo empieza con una cuenta</h3><p className="mt-2 text-sm leading-6 text-[#7f91ad]">Creá efectivo, banco o billetera y después registrá ingresos y egresos.</p><button type="button" onClick={() => setAccountModalId("new")} className="mt-5 rounded-xl bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f]">Crear primera cuenta</button></div></div>
+        <div className="grid min-h-52 place-items-center rounded-2xl border border-dashed border-[#584a6c] bg-[#231c30]/75 px-6 py-10 text-center"><div className="max-w-sm"><span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-[#65547b] bg-[#352744] font-mono text-[#d8bdf9]">$</span><h3 className="mt-4 text-base font-black text-[#eee4f7]">Tu primer saldo empieza con una cuenta</h3><p className="mt-2 text-sm leading-6 text-[#b2a5c6]">Creá efectivo, banco o billetera y después registrá ingresos y egresos.</p><button type="button" onClick={() => setAccountModalId("new")} className="mt-5 rounded-xl bg-[#d8bdf9] px-4 py-2.5 text-sm font-black text-[#07111f]">Crear primera cuenta</button></div></div>
       )}
 
-      <section aria-labelledby="finance-due-payments-title" className="overflow-hidden rounded-2xl border border-[#554a32] bg-[linear-gradient(145deg,#151b24,#171a20)]">
-          <div className="grid gap-3 border-b border-[#3b382f] px-4 py-4 sm:flex sm:items-end sm:justify-between sm:px-5">
+      <section aria-labelledby="finance-due-payments-title" className="overflow-hidden rounded-sm border border-[#554a32] bg-[linear-gradient(145deg,#231c2a,#231c28)]">
+          <div className="grid gap-3 border-b border-[#514135] px-4 py-4 sm:flex sm:items-end sm:justify-between sm:px-5">
             <div>
-              <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#b99551]">Agenda de vencimientos</p>
-              <h3 id="finance-due-payments-title" className="mt-1 text-lg font-black text-[#f3ead8]">Pagos por realizar</h3>
-              <p className="mt-1 text-xs leading-5 text-[#8f887a]">Son recordatorios: no modifican el saldo hasta que registres el egreso.</p>
+              <h2 id="finance-due-payments-title" className="font-serif text-2xl tracking-tight text-[#f3ead8]">Vencimientos</h2>
+              <p className="mt-1 text-xs leading-5 text-[#baab98]">Registrá el egreso para descontar el pago del saldo.</p>
             </div>
             <div className="flex items-center gap-2">
-              {workspace.financeDuePaymentCounts.overdue > 0 ? <span className="rounded-lg border border-[#864a3e] bg-[#331b18] px-2.5 py-1 text-xs font-black text-[#ff9d88]">{workspace.financeDuePaymentCounts.overdue} vencidos</span> : null}
-              <span className="rounded-lg border border-[#66532d] bg-[#292315] px-2.5 py-1 font-mono text-xs font-black text-[#f4c36a]">{workspace.financeDuePaymentCounts.pending} pendientes</span>
+              {finance.duePaymentCounts.overdue > 0 ? <span className="rounded-lg border border-[#864a3e] bg-[#331b18] px-2.5 py-1 text-xs font-black text-[#ff9d88]">{finance.duePaymentCounts.overdue} {finance.duePaymentCounts.overdue === 1 ? "vencido" : "vencidos"}</span> : null}
+              <span className="rounded-lg border border-[#66532d] bg-[#292315] px-2.5 py-1 font-mono text-xs font-black text-[#f4c36a]">{finance.duePaymentCounts.pending} {finance.duePaymentCounts.pending === 1 ? "pendiente" : "pendientes"}</span>
             </div>
           </div>
           {visibleDuePayments.length > 0 ? (
-            <div className="divide-y divide-[#34342f]">
+            <div className="divide-y divide-[#493b36]">
               {visibleDuePayments.map((payment) => {
                 const account = payment.accountId ? accountById.get(payment.accountId) : null;
-                const urgency = getFinanceDuePaymentUrgency(payment, workspace.today);
+                const urgency = getFinanceDuePaymentUrgency(payment, finance.today);
                 const urgencyStyle = urgency === "overdue"
                   ? "border-[#864a3e] bg-[#331b18] text-[#ff9d88]"
                   : urgency === "today"
@@ -457,18 +447,18 @@ export default function FinanceView({
                       : `Vence ${payment.dueDate.split("-").reverse().join("/")}`;
 
                 return (
-                  <article key={payment.id} className={`grid gap-3 px-4 py-4 transition hover:bg-[#202129] sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-5 ${urgency === "paid" ? "opacity-65" : ""}`}>
+                  <article key={payment.id} className={`grid gap-3 px-4 py-4 transition hover:bg-[#30232d] sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-5 ${urgency === "paid" ? "opacity-65" : ""}`}>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${urgencyStyle}`}>{urgencyLabel}</span>
-                        {payment.category ? <span className="text-xs font-semibold text-[#8f887a]">{payment.category}</span> : null}
+                        {payment.category ? <span className="text-xs font-semibold text-[#baab98]">{payment.category}</span> : null}
                       </div>
                       <p className={`mt-2 truncate text-sm font-black text-[#f1eadc] ${urgency === "paid" ? "line-through" : ""}`}>{payment.description}</p>
-                      <p className="mt-1 truncate text-xs text-[#8f887a]">{account?.name ?? "Sin cuenta definida"} · {payment.dueDate.split("-").reverse().join("/")}</p>
+                      <p className="mt-1 truncate text-xs text-[#baab98]">{account?.name ?? "Sin cuenta definida"} · {payment.dueDate.split("-").reverse().join("/")}</p>
                     </div>
                     <p className={`font-mono text-base font-black ${urgency === "overdue" ? "text-[#ff9d88]" : "text-[#f3ead8]"}`}>{formatMoney(payment.amountMinor, payment.currency)}</p>
                     <div className="flex flex-wrap gap-1 sm:justify-end">
-                      <button type="button" onClick={() => workspace.setFinanceDuePaymentState(payment.id, payment.status === "paid" ? "pending" : "paid")} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black transition ${payment.status === "paid" ? "border-[#4b5c71] text-[#b8c5d9] hover:bg-[#192b43]" : "border-[#366c58] text-[#75dcb1] hover:bg-[#142c25]"}`}>{payment.status === "paid" ? "Volver a pendiente" : "Marcar pagado"}</button>
+                      <button type="button" onClick={() => finance.setDuePaymentStatus(payment.id, payment.status === "paid" ? "pending" : "paid")} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black transition ${payment.status === "paid" ? "border-[#4b5c71] text-[#b8c5d9] hover:bg-[#332743]" : "border-[#366c58] text-[#75dcb1] hover:bg-[#142c25]"}`}>{payment.status === "paid" ? "Volver a pendiente" : "Marcar pagado"}</button>
                       <button type="button" onClick={() => setDuePaymentModalId(payment.id)} className="rounded-lg border border-[#4b4b46] px-2.5 py-1.5 text-xs font-bold text-[#c1b8a8] transition hover:bg-[#292923]">Editar</button>
                       <button type="button" onClick={() => confirmDuePaymentDelete(payment)} className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-bold text-[#d98276] transition hover:border-[#713d3a] hover:bg-[#2e1716]">Eliminar</button>
                     </div>
@@ -478,25 +468,25 @@ export default function FinanceView({
             </div>
           ) : (
             <div className="px-5 py-9 text-center">
-              <p className="text-sm text-[#9a9386]">{normalizedQuery ? "No hay pagos que coincidan con la búsqueda." : "Todavía no tenés pagos pendientes cargados."}</p>
+              <p className="text-sm text-[#b8a997]">{normalizedQuery ? "No hay pagos que coincidan con la búsqueda." : "Todavía no tenés pagos pendientes cargados."}</p>
               {!normalizedQuery ? <button type="button" onClick={() => setDuePaymentModalId("new")} className="mt-4 rounded-xl border border-[#7d6330] bg-[#2c2415] px-4 py-2.5 text-sm font-black text-[#f4c36a] transition hover:bg-[#3a2e19]">Anotar un pago</button> : null}
             </div>
           )}
       </section>
 
-      {workspace.financeAccounts.length > 0 ? (
+      {finance.accounts.length > 0 ? (
         <section aria-labelledby="finance-accounts-title">
-          <div className="mb-3 flex items-center justify-between"><h3 id="finance-accounts-title" className="text-lg font-black text-[#edf3fb]">Cuentas</h3><span className="font-mono text-xs text-[#7185a3]">{workspace.financeAccounts.length}</span></div>
+          <div className="mb-3 flex items-center justify-between"><h2 id="finance-accounts-title" className="font-serif text-2xl tracking-tight text-[#f3eefb]">Cuentas</h2><span className="font-mono text-xs text-[#aba0bc]">{finance.accounts.length}</span></div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {workspace.financeAccounts.map((account) => {
-              const balance = workspace.financeBalances.get(account.id) ?? account.openingBalanceMinor;
-              const count = workspace.financeEntries.filter((entry) => entry.accountId === account.id).length;
+            {finance.accounts.map((account) => {
+              const balance = finance.balances.get(account.id) ?? account.openingBalanceMinor;
+              const count = finance.entries.filter((entry) => entry.accountId === account.id).length;
               return (
-                <button key={account.id} type="button" onClick={() => setAccountModalId(account.id)} className="group min-w-0 rounded-2xl border border-[#2d4565] bg-[#101e30] p-4 text-left transition hover:-translate-y-0.5 hover:border-[#4a6b96] hover:bg-[#14253a]">
-                  <div className="flex items-start justify-between gap-3"><span className="rounded-lg border border-[#355274] bg-[#0a1725] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-[#8fa4c0]">{getFinanceAccountTypeLabel(account.type)}</span><span className="font-mono text-xs font-black text-[#82afff]">{account.currency}</span></div>
-                  <h4 className="mt-5 truncate text-base font-black text-[#e9f0fa]">{account.name}</h4>
-                  <p className={`mt-1 font-mono text-2xl font-black ${balance < 0 ? "text-[#ff927d]" : "text-[#edf3fb]"}`}>{formatMoney(balance, account.currency)}</p>
-                  <p className="mt-4 text-xs font-semibold text-[#7185a3]">{count} {count === 1 ? "movimiento" : "movimientos"} · Editar cuenta</p>
+                <button key={account.id} type="button" onClick={() => setAccountModalId(account.id)} className="min-w-0 rounded-sm border border-[#514461] bg-[#251e32] p-4 text-left transition hover:-translate-y-0.5 hover:border-[#7c6597] hover:bg-[#302741]">
+                  <div className="flex items-start justify-between gap-3"><span className="rounded-lg border border-[#645375] bg-[#21192e] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-[#c4b3d8]">{getFinanceAccountTypeLabel(account.type)}</span><span className="font-mono text-xs font-black text-[#d8bdf9]">{account.currency}</span></div>
+                  <h4 className="mt-5 truncate text-base font-black text-[#f3eefb]">{account.name}</h4>
+                  <p className={`mt-1 font-mono text-2xl font-black ${balance < 0 ? "text-[#ff927d]" : "text-[#f3eefb]"}`}>{formatMoney(balance, account.currency)}</p>
+                  <p className="mt-4 text-xs font-semibold text-[#aba0bc]">{count} {count === 1 ? "movimiento" : "movimientos"} · Editar cuenta</p>
                 </button>
               );
             })}
@@ -504,25 +494,25 @@ export default function FinanceView({
         </section>
       ) : null}
 
-      {workspace.financeAccounts.length > 0 ? (
-        <section aria-labelledby="finance-entries-title" className="overflow-hidden rounded-2xl border border-[#2d4565] bg-[#0d1928]">
-          <div className="flex items-center justify-between border-b border-[#263b57] px-4 py-4 sm:px-5"><div><p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Cronología</p><h3 id="finance-entries-title" className="mt-1 text-lg font-black text-[#edf3fb]">Movimientos recientes</h3></div><span className="font-mono text-xs text-[#7185a3]">{visibleEntries.length}</span></div>
+      {finance.accounts.length > 0 ? (
+        <section aria-labelledby="finance-entries-title" className="overflow-hidden rounded-sm border border-[#514461] bg-[#201a2e]">
+          <div className="flex items-center justify-between border-b border-[#41374f] px-4 py-4 sm:px-5"><h2 id="finance-entries-title" className="font-serif text-2xl tracking-tight text-[#f3eefb]">Movimientos recientes</h2><span className="font-mono text-xs text-[#aba0bc]">{visibleEntries.length}</span></div>
           {visibleEntries.length > 0 ? (
-            <div className="divide-y divide-[#213650]">
+            <div className="divide-y divide-[#41374f]">
               {visibleEntries.map((entry) => {
                 const account = accountById.get(entry.accountId);
                 if (!account) return null;
                 return (
-                  <article key={entry.id} className="grid gap-3 px-4 py-4 transition hover:bg-[#122238] sm:grid-cols-[96px_minmax(0,1fr)_auto_auto] sm:items-center sm:px-5">
-                    <time className="font-mono text-xs font-bold text-[#8292ad]">{entry.date.split("-").reverse().join("/")}</time>
-                    <div className="min-w-0"><p className="truncate text-sm font-black text-[#e7eef9]">{entry.description}</p><p className="mt-1 truncate text-xs text-[#7185a3]">{account.name}{entry.category ? ` · ${entry.category}` : ""}</p></div>
+                  <article key={entry.id} className="grid gap-3 px-4 py-4 transition hover:bg-[#2a2139] sm:grid-cols-[96px_minmax(0,1fr)_auto_auto] sm:items-center sm:px-5">
+                    <time className="font-mono text-xs font-bold text-[#bba9ce]">{entry.date.split("-").reverse().join("/")}</time>
+                    <div className="min-w-0"><p className="truncate text-sm font-black text-[#f0e8fc]">{entry.description}</p><p className="mt-1 truncate text-xs text-[#aba0bc]">{account.name}{entry.category ? ` · ${entry.category}` : ""}</p></div>
                     <p className={`font-mono text-sm font-black ${entry.kind === "income" ? "text-[#63d3a5]" : "text-[#ff927d]"}`}>{entry.kind === "income" ? "+" : "−"} {formatMoney(entry.amountMinor, account.currency)}</p>
-                    <div className="flex gap-1 sm:justify-end"><button type="button" onClick={() => setEntryModal({ id: entry.id, kind: entry.kind })} className="rounded-lg border border-[#334b6d] px-2.5 py-1.5 text-xs font-bold text-[#aebdd1] transition hover:bg-[#192b43]">Editar</button><button type="button" onClick={() => confirmEntryDelete(entry)} className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-bold text-[#d98276] transition hover:border-[#713d3a] hover:bg-[#2e1716]">Eliminar</button></div>
+                    <div className="flex gap-1 sm:justify-end"><button type="button" onClick={() => setEntryModal({ id: entry.id, kind: entry.kind })} className="rounded-lg border border-[#5d4d70] px-2.5 py-1.5 text-xs font-bold text-[#c8bad6] transition hover:bg-[#332743]">Editar</button><button type="button" onClick={() => confirmEntryDelete(entry)} className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-bold text-[#d98276] transition hover:border-[#713d3a] hover:bg-[#2e1716]">Eliminar</button></div>
                   </article>
                 );
               })}
             </div>
-          ) : <p className="px-5 py-10 text-center text-sm text-[#7f91ad]">{normalizedQuery ? "No hay movimientos que coincidan con la búsqueda." : "Todavía no registraste movimientos."}</p>}
+          ) : <p className="px-5 py-10 text-center text-sm text-[#b2a5c6]">{normalizedQuery ? "No hay movimientos que coincidan con la búsqueda." : "Todavía no registraste movimientos."}</p>}
         </section>
       ) : null}
 
@@ -531,8 +521,8 @@ export default function FinanceView({
           <AccountForm
             key={selectedAccount?.id ?? "new-account"}
             account={selectedAccount}
-            entryCount={selectedAccount ? workspace.financeEntries.filter((entry) => entry.accountId === selectedAccount.id).length : 0}
-            onSave={(draft) => selectedAccount ? workspace.updateFinanceAccount(selectedAccount.id, draft) : workspace.addFinanceAccount(draft)}
+            entryCount={selectedAccount ? finance.entries.filter((entry) => entry.accountId === selectedAccount.id).length : 0}
+            onSave={(draft) => selectedAccount ? finance.updateAccount(selectedAccount.id, draft) : finance.addAccount(draft)}
             onDelete={selectedAccount ? () => confirmAccountDelete(selectedAccount) : undefined}
             onClose={() => setAccountModalId(null)}
           />
@@ -544,10 +534,10 @@ export default function FinanceView({
           <EntryForm
             key={selectedEntry?.id ?? `new-${entryModal.kind}`}
             entry={selectedEntry}
-            accounts={workspace.financeAccounts}
-            today={workspace.today}
+            accounts={finance.accounts}
+            today={finance.today}
             defaultKind={entryModal.kind}
-            onSave={(draft) => selectedEntry ? workspace.updateFinanceEntry(selectedEntry.id, draft) : workspace.addFinanceEntry(draft)}
+            onSave={(draft) => selectedEntry ? finance.updateEntry(selectedEntry.id, draft) : finance.addEntry(draft)}
             onClose={() => setEntryModal(null)}
           />
         </FinanceModal>
@@ -558,9 +548,9 @@ export default function FinanceView({
           <DuePaymentForm
             key={selectedDuePayment?.id ?? "new-due-payment"}
             payment={selectedDuePayment}
-            accounts={workspace.financeAccounts}
-            today={workspace.today}
-            onSave={(draft) => selectedDuePayment ? workspace.updateFinanceDuePayment(selectedDuePayment.id, draft) : workspace.addFinanceDuePayment(draft)}
+            accounts={finance.accounts}
+            today={finance.today}
+            onSave={(draft) => selectedDuePayment ? finance.updateDuePayment(selectedDuePayment.id, draft) : finance.addDuePayment(draft)}
             onClose={() => setDuePaymentModalId(null)}
           />
         </FinanceModal>

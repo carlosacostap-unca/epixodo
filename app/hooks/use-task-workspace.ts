@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import {
   loadRemoteWorkspace,
   loadWorkspace,
@@ -17,20 +17,18 @@ import {
   getAvailableParentTasks,
   getCompletedTasks,
   getInboxTasks,
+  getReviewedUnassignedTasks,
+  isInboxTask,
   isValidSubjectEventDraft,
   isValidSubjectDeliverableDraft,
   getPhaseDateRangeError,
   getSubjectDescendantIds,
   getSubjectTasks,
-  getTaskDescendantIds,
   getTodayDateOnly,
   getTodayTasks,
   getUnplannedDeadlineTasks,
   getUpcomingTasks,
   getWaitingTasks,
-  normalizeTaskDraft,
-  normalizeTaskDeliverableAssignment,
-  normalizeTaskPhaseAssignment,
   patchSubjectEvent,
   patchSubjectDeliverable,
   reorderSubjectPhases,
@@ -39,10 +37,10 @@ import {
   removeSubjectEventFromWorkspace,
   removeSubjectDeliverableFromWorkspace,
   removeSubjectFromWorkspace,
+  removeTaskFromList,
   sortedSubjectPhases,
   sortedExpectations,
   setExpectationStatus,
-  uniqueIds,
   updateTaskStatus,
   type Subject,
   type SubjectDeliverable,
@@ -60,25 +58,10 @@ import {
   type TaskStatus,
   type WorkspaceData,
 } from "../lib/tasks";
-import {
-  createFinanceAccount,
-  createFinanceDuePayment,
-  createFinanceEntry,
-  getAccountBalanceMinor,
-  getFinanceDuePaymentUrgency,
-  getFinanceCurrencySummaries,
-  patchFinanceAccount,
-  patchFinanceDuePayment,
-  patchFinanceEntry,
-  removeFinanceAccount,
-  setFinanceDuePaymentStatus,
-  sortedFinanceDuePayments,
-  sortedFinanceEntries,
-  type FinanceAccountDraft,
-  type FinanceDuePaymentDraft,
-  type FinanceDuePaymentStatus,
-  type FinanceEntryDraft,
-} from "../lib/finance";
+import { useFinanceWorkspace, type FinanceData } from "../modules/finance/workspace";
+import { captureDraft, confirmCapture, type CaptureAction } from "../modules/capture/actions";
+import type { CaptureResult } from "../lib/ai-capture";
+import { preparePlanningTask, preparePlanningTaskPatch, taskAssignmentError, type TaskPatch } from "../modules/planning/task-operations";
 import {
   createIntakeFromPlan,
   createNutritionFood,
@@ -120,23 +103,6 @@ import {
   type IdealDayGoalDraft,
 } from "../lib/ideal-day";
 
-type TaskPatch = Partial<
-  Pick<
-    Task,
-    | "title"
-    | "notes"
-    | "subjectIds"
-    | "phaseId"
-    | "deliverableId"
-    | "parentTaskId"
-    | "hacerEl"
-    | "venceEl"
-    | "priority"
-    | "status"
-    | "aiSuggestion"
-  >
->;
-
 type PhasePatch = Partial<
   Pick<
     SubjectPhase,
@@ -147,14 +113,40 @@ type PhasePatch = Partial<
 type SubjectEventPatch = Partial<SubjectEventDraft>;
 
 export function useTaskWorkspace() {
-  const [workspace, setWorkspace] = useState<WorkspaceData>(() => emptyWorkspace());
+  const [{ workspace, suggestionErrors }, setState] = useState(() => ({
+    workspace: emptyWorkspace(),
+    suggestionErrors: new Map<string, string>(),
+  }));
+  const setWorkspace = useCallback((update: SetStateAction<WorkspaceData>) => {
+    setState((current) => {
+      const nextWorkspace = typeof update === "function" ? update(current.workspace) : update;
+      return nextWorkspace === current.workspace ? current : { ...current, workspace: nextWorkspace };
+    });
+  }, []);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const saveTimerRef = useRef<number | null>(null);
+  const saveQueue = useRef(Promise.resolve());
+  const isMounted = useRef(false);
   const today = getTodayDateOnly();
+  const { financeAccounts, financeEntries, financeDuePayments, ...otherData } = workspace;
+  const finance = useFinanceWorkspace({ financeAccounts, financeEntries, financeDuePayments }, today, updateFinance);
+
+  function updateFinance(update: (current: FinanceData) => FinanceData) {
+    setWorkspace((current) => {
+      const currentFinance = {
+        financeAccounts: current.financeAccounts,
+        financeEntries: current.financeEntries,
+        financeDuePayments: current.financeDuePayments,
+      };
+      const nextFinance = update(currentFinance);
+      return nextFinance === currentFinance ? current : { ...current, ...nextFinance };
+    });
+  }
 
   useEffect(() => {
+    isMounted.current = true;
     let isCancelled = false;
 
     async function hydrateWorkspace() {
@@ -252,8 +244,9 @@ export function useTaskWorkspace() {
 
     return () => {
       isCancelled = true;
+      isMounted.current = false;
     };
-  }, []);
+  }, [setWorkspace]);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -266,19 +259,21 @@ export function useTaskWorkspace() {
       window.clearTimeout(saveTimerRef.current);
     }
 
-    saveTimerRef.current = window.setTimeout(async () => {
-      setIsSaving(true);
-
-      try {
-        await saveRemoteWorkspace(workspace);
-        setSyncError(null);
-      } catch (error) {
-        setSyncError(
-          error instanceof Error ? error.message : "No se pudo sincronizar con PocketBase.",
-        );
-      } finally {
-        setIsSaving(false);
-      }
+    saveTimerRef.current = window.setTimeout(() => {
+      saveQueue.current = saveQueue.current.then(async () => {
+        if (!isMounted.current) return;
+        setIsSaving(true);
+        try {
+          await saveRemoteWorkspace(workspace);
+          setSyncError(null);
+        } catch (error) {
+          setSyncError(
+            error instanceof Error ? error.message : "No se pudo sincronizar con PocketBase.",
+          );
+        } finally {
+          setIsSaving(false);
+        }
+      });
     }, 500);
 
     return () => {
@@ -291,7 +286,7 @@ export function useTaskWorkspace() {
   const views = useMemo(
     () => ({
       today: getTodayTasks(workspace.tasks, today),
-      inbox: getInboxTasks(workspace.tasks),
+      unassigned: getReviewedUnassignedTasks(workspace.tasks),
       upcoming: getUpcomingTasks(workspace.tasks, today),
       waiting: getWaitingTasks(workspace.tasks),
       completed: getCompletedTasks(workspace.tasks),
@@ -299,44 +294,8 @@ export function useTaskWorkspace() {
     }),
     [today, workspace.tasks],
   );
+  const inboxEntries = useMemo(() => getInboxTasks(workspace.tasks), [workspace.tasks]);
 
-  const financeBalances = useMemo(
-    () =>
-      new Map(
-        workspace.financeAccounts.map((account) => [
-          account.id,
-          getAccountBalanceMinor(account, workspace.financeEntries),
-        ]),
-      ),
-    [workspace.financeAccounts, workspace.financeEntries],
-  );
-  const financeSummaries = useMemo(
-    () =>
-      getFinanceCurrencySummaries(
-        workspace.financeAccounts,
-        workspace.financeEntries,
-        today.slice(0, 7),
-      ),
-    [today, workspace.financeAccounts, workspace.financeEntries],
-  );
-  const recentFinanceEntries = useMemo(
-    () => sortedFinanceEntries(workspace.financeEntries),
-    [workspace.financeEntries],
-  );
-  const orderedFinanceDuePayments = useMemo(
-    () => sortedFinanceDuePayments(workspace.financeDuePayments),
-    [workspace.financeDuePayments],
-  );
-  const financeDuePaymentCounts = useMemo(() => {
-    let pending = 0;
-    let overdue = 0;
-    for (const payment of workspace.financeDuePayments) {
-      if (payment.status !== "pending") continue;
-      pending += 1;
-      if (getFinanceDuePaymentUrgency(payment, today) === "overdue") overdue += 1;
-    }
-    return { pending, overdue };
-  }, [today, workspace.financeDuePayments]);
   const nutritionTodaySummary = useMemo(
     () =>
       getNutritionDailySummary(
@@ -365,93 +324,34 @@ export function useTaskWorkspace() {
     [workspace.expectations],
   );
 
-  function addTask(draft: TaskDraft) {
-    if (!draft.title.trim()) {
-      return;
-    }
-
+  function addTask(draft: TaskDraft, reviewed = false) {
+    const now = new Date();
     setWorkspace((current) => {
-      const assignment = normalizeTaskPhaseAssignment(
-        current.phases,
-        draft.subjectIds,
-        draft.phaseId,
-      );
-      const deliverableId = normalizeTaskDeliverableAssignment(
-        current.deliverables,
-        assignment.subjectIds,
-        draft.deliverableId,
-      );
-
+      const task = preparePlanningTask(current, draft, now);
+      if (!task) return current;
       return {
         ...current,
-        tasks: [
-          normalizeTaskDraft({ ...draft, ...assignment, deliverableId }),
-          ...current.tasks,
-        ],
+        tasks: [reviewed ? { ...task, inboxReviewed: true } : task, ...current.tasks],
       };
     });
   }
 
   function patchTask(taskId: string, patch: TaskPatch) {
-    setWorkspace((current) => ({
-      ...current,
-      tasks: current.tasks.map((task) => {
-        if (task.id !== taskId) {
-          return task;
-        }
+    const now = new Date();
+    setWorkspace((current) => {
+      if (patch.subjectIds && taskAssignmentError(current, patch.subjectIds)) return current;
+      return {
+        ...current,
+        tasks: current.tasks.map((task) => task.id === taskId ? preparePlanningTaskPatch(current, task, patch, now) : task),
+      };
+    });
+  }
 
-        const nextStatus = patch.status ?? task.status;
-        const descendantTaskIds = new Set(getTaskDescendantIds(current.tasks, task.id));
-        const requestedParentTaskId =
-          "parentTaskId" in patch ? patch.parentTaskId || null : task.parentTaskId;
-        const safeParentTaskId =
-          requestedParentTaskId &&
-          requestedParentTaskId !== task.id &&
-          !descendantTaskIds.has(requestedParentTaskId)
-            ? requestedParentTaskId
-            : null;
-        const requestedSubjectIds =
-          "subjectIds" in patch ? uniqueIds(patch.subjectIds) : task.subjectIds;
-        const requestedPhaseId = "phaseId" in patch ? patch.phaseId || null : task.phaseId;
-        const phase = requestedPhaseId
-          ? current.phases.find((item) => item.id === requestedPhaseId)
-          : null;
-        const assignment =
-          "phaseId" in patch && phase
-            ? normalizeTaskPhaseAssignment(current.phases, requestedSubjectIds, phase.id)
-            : {
-                subjectIds: requestedSubjectIds,
-                phaseId:
-                  phase && requestedSubjectIds.includes(phase.subjectId) ? phase.id : null,
-              };
-        const requestedDeliverableId =
-          "deliverableId" in patch ? patch.deliverableId || null : task.deliverableId;
-        const deliverableId = normalizeTaskDeliverableAssignment(
-          current.deliverables,
-          assignment.subjectIds,
-          requestedDeliverableId,
-        );
-        const updated = {
-          ...task,
-          ...patch,
-          title: patch.title?.trim() ?? task.title,
-          notes: patch.notes ?? task.notes,
-          subjectIds: assignment.subjectIds,
-          phaseId: assignment.phaseId,
-          deliverableId,
-          parentTaskId: safeParentTaskId,
-          hacerEl: "hacerEl" in patch ? patch.hacerEl || null : task.hacerEl,
-          venceEl: "venceEl" in patch ? patch.venceEl || null : task.venceEl,
-          updatedAt: new Date().toISOString(),
-        };
-
-        if (nextStatus !== task.status) {
-          return updateTaskStatus(updated, nextStatus);
-        }
-
-        return updated;
-      }),
-    }));
+  function assignTaskSubjects(taskId: string, subjectIds: string[]): string | undefined {
+    if (!workspace.tasks.some(({ id }) => id === taskId)) return "La tarea ya no está disponible.";
+    const error = taskAssignmentError(workspace, subjectIds);
+    if (error) return error;
+    patchTask(taskId, { subjectIds });
   }
 
   function setTaskStatus(taskId: string, status: TaskStatus) {
@@ -470,12 +370,37 @@ export function useTaskWorkspace() {
   function deleteTask(taskId: string) {
     setWorkspace((current) => ({
       ...current,
-      tasks: current.tasks
-        .filter((task) => task.id !== taskId)
-        .map((task) =>
-          task.parentTaskId === taskId ? { ...task, parentTaskId: null } : task,
-        ),
+      tasks: removeTaskFromList(current.tasks, taskId),
     }));
+  }
+
+  function acceptCapture(taskId: string, action: CaptureAction) {
+    const now = new Date();
+    setState((current) => {
+      const result = confirmCapture(current.workspace, taskId, action, now);
+      if (!result) return current;
+      const errors = new Map(current.suggestionErrors);
+      if ("error" in result) {
+        errors.set(taskId, result.error);
+        return { ...current, suggestionErrors: errors };
+      }
+
+      errors.delete(taskId);
+      return { suggestionErrors: errors, workspace: result.workspace };
+    });
+  }
+
+  function discardCapture(taskId: string) {
+    setState((current) => {
+      const capture = current.workspace.tasks.find(({ id }) => id === taskId);
+      if (!capture || !isInboxTask(capture)) return current;
+      const errors = new Map(current.suggestionErrors);
+      errors.delete(taskId);
+      return {
+        suggestionErrors: errors,
+        workspace: { ...current.workspace, tasks: removeTaskFromList(current.workspace.tasks, taskId) },
+      };
+    });
   }
 
   function addSubject(
@@ -748,155 +673,6 @@ export function useTaskWorkspace() {
     setWorkspace((current) => removeSubjectEventFromWorkspace(current, eventId));
   }
 
-  function addFinanceAccount(draft: FinanceAccountDraft) {
-    const account = createFinanceAccount(draft);
-    if (!account) {
-      return;
-    }
-
-    setWorkspace((current) => ({
-      ...current,
-      financeAccounts: [...current.financeAccounts, account],
-    }));
-  }
-
-  function updateFinanceAccount(accountId: string, patch: Partial<FinanceAccountDraft>) {
-    setWorkspace((current) => {
-      const account = current.financeAccounts.find((item) => item.id === accountId);
-      if (!account) {
-        return current;
-      }
-
-      const updated = patchFinanceAccount(
-        account,
-        patch,
-        current.financeEntries.some((entry) => entry.accountId === accountId),
-      );
-      if (!updated) {
-        return current;
-      }
-
-      return {
-        ...current,
-        financeAccounts: current.financeAccounts.map((item) =>
-          item.id === accountId ? updated : item,
-        ),
-      };
-    });
-  }
-
-  function deleteFinanceAccount(accountId: string) {
-    setWorkspace((current) => {
-      const removed = removeFinanceAccount(
-        current.financeAccounts,
-        current.financeEntries,
-        accountId,
-        current.financeDuePayments,
-      );
-      return {
-        ...current,
-        financeAccounts: removed.accounts,
-        financeEntries: removed.entries,
-        financeDuePayments: removed.duePayments,
-      };
-    });
-  }
-
-  function addFinanceEntry(draft: FinanceEntryDraft) {
-    setWorkspace((current) => {
-      const entry = createFinanceEntry(
-        draft,
-        new Set(current.financeAccounts.map((account) => account.id)),
-      );
-      return entry
-        ? { ...current, financeEntries: [...current.financeEntries, entry] }
-        : current;
-    });
-  }
-
-  function updateFinanceEntry(entryId: string, patch: Partial<FinanceEntryDraft>) {
-    setWorkspace((current) => {
-      const entry = current.financeEntries.find((item) => item.id === entryId);
-      if (!entry) {
-        return current;
-      }
-
-      const updated = patchFinanceEntry(
-        entry,
-        patch,
-        new Set(current.financeAccounts.map((account) => account.id)),
-      );
-      return updated
-        ? {
-            ...current,
-            financeEntries: current.financeEntries.map((item) =>
-              item.id === entryId ? updated : item,
-            ),
-          }
-        : current;
-    });
-  }
-
-  function deleteFinanceEntry(entryId: string) {
-    setWorkspace((current) => ({
-      ...current,
-      financeEntries: current.financeEntries.filter((entry) => entry.id !== entryId),
-    }));
-  }
-
-  function addFinanceDuePayment(draft: FinanceDuePaymentDraft) {
-    setWorkspace((current) => {
-      const payment = createFinanceDuePayment(
-        draft,
-        new Map(current.financeAccounts.map((account) => [account.id, account.currency])),
-      );
-      return payment
-        ? { ...current, financeDuePayments: [...current.financeDuePayments, payment] }
-        : current;
-    });
-  }
-
-  function updateFinanceDuePayment(
-    paymentId: string,
-    patch: Partial<FinanceDuePaymentDraft>,
-  ) {
-    setWorkspace((current) => {
-      const payment = current.financeDuePayments.find((item) => item.id === paymentId);
-      if (!payment) return current;
-      const updated = patchFinanceDuePayment(
-        payment,
-        patch,
-        new Map(current.financeAccounts.map((account) => [account.id, account.currency])),
-      );
-      return updated
-        ? {
-            ...current,
-            financeDuePayments: current.financeDuePayments.map((item) =>
-              item.id === paymentId ? updated : item,
-            ),
-          }
-        : current;
-    });
-  }
-
-  function setFinanceDuePaymentState(paymentId: string, status: FinanceDuePaymentStatus) {
-    setWorkspace((current) => ({
-      ...current,
-      financeDuePayments: current.financeDuePayments.map((payment) =>
-        payment.id === paymentId ? setFinanceDuePaymentStatus(payment, status) : payment,
-      ),
-    }));
-  }
-
-  function deleteFinanceDuePayment(paymentId: string) {
-    setWorkspace((current) => ({
-      ...current,
-      financeDuePayments: current.financeDuePayments.filter(
-        (payment) => payment.id !== paymentId,
-      ),
-    }));
-  }
-
   function updateNutritionProfile(draft: NutritionProfileDraft) {
     const profile = createNutritionProfile(draft);
     if (profile) setWorkspace((current) => ({ ...current, nutritionProfile: profile }));
@@ -1133,7 +909,7 @@ export function useTaskWorkspace() {
   }
 
   function getTasksForSubject(subjectId: string) {
-    return getSubjectTasks(workspace.tasks, workspace.subjects, subjectId);
+    return getSubjectTasks(workspace.tasks, workspace.subjects, subjectId, true);
   }
 
   function getAvailableParentTasksForTask(taskId: string) {
@@ -1150,29 +926,38 @@ export function useTaskWorkspace() {
   }
 
   return {
-    ...workspace,
+    ...otherData,
+    finance,
+    capture: {
+      entries: inboxEntries,
+      errors: suggestionErrors,
+      addEntry: (result: CaptureResult) => addTask(captureDraft(result)),
+      confirmEntry: acceptCapture,
+      discardEntry: discardCapture,
+    },
     isLoaded,
     isSaving,
     syncError,
     today,
-    views,
-    financeBalances,
-    financeSummaries,
-    recentFinanceEntries,
-    orderedFinanceDuePayments,
-    financeDuePaymentCounts,
+    planning: {
+      views,
+      addTask,
+      addReviewedTask: (draft: TaskDraft) => addTask(draft, true),
+      patchTask,
+      assignTaskSubjects,
+      setTaskStatus,
+      setTaskPriority,
+      deleteTask,
+      getAvailableParentTasksForTask,
+      getTasksForSubject,
+    },
     nutritionTodaySummary,
     nutritionCurrentWeekPlan,
     orderedExpectations,
-    addTask,
     addExpectation,
     updateExpectation,
     updateExpectationStatus,
     deleteExpectation,
-    patchTask,
-    setTaskStatus,
-    setTaskPriority,
-    deleteTask,
     addSubject,
     renameSubject,
     setSubjectHorizon,
@@ -1188,16 +973,6 @@ export function useTaskWorkspace() {
     addSubjectEvent,
     updateSubjectEvent,
     deleteSubjectEvent,
-    addFinanceAccount,
-    updateFinanceAccount,
-    deleteFinanceAccount,
-    addFinanceEntry,
-    updateFinanceEntry,
-    deleteFinanceEntry,
-    addFinanceDuePayment,
-    updateFinanceDuePayment,
-    setFinanceDuePaymentState,
-    deleteFinanceDuePayment,
     updateNutritionProfile,
     addNutritionFood,
     updateNutritionFood,
@@ -1229,8 +1004,6 @@ export function useTaskWorkspace() {
     updateLocationEntry,
     deleteLocationEntry,
     getNutritionSummary,
-    getTasksForSubject,
-    getAvailableParentTasksForTask,
     getAvailableParentSubjects,
   };
 }

@@ -2,19 +2,19 @@
 
 import { type DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useTaskWorkspace } from "../hooks/use-task-workspace";
-import FinanceView from "./finance-view";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { workspaceHref, type LegacyWorkspaceView, type WorkspaceView } from "../lib/module-navigation";
+import { useWorkspace, WorkspaceLoading } from "./workspace-provider";
 import NutritionView from "./nutrition-view";
 import LocationsView from "./locations-view";
-import CaptureView from "./capture-view";
 import ExpectationsView from "./expectations-view";
 import IdealDayView from "./ideal-day-view";
 import CompanionView from "./companion-view";
 import TodayOverview, { getTodayOverviewCount } from "./today-overview";
-import InboxAiSuggestion, { type InboxSuggestionAction } from "./inbox-ai-suggestion";
-import LogoutButton from "./logout-button";
-import MobileNavigation from "./mobile-navigation";
-import type { FinanceAccount } from "../lib/finance";
+import ViewIcon from "./view-icon";
+import { TaskCreateModal, TaskEditModal } from "../modules/planning/task-forms";
+import { formatDate, getStatusLabel, getPriorityLabel, taskMatchesQuery, sortedSubjects, TaskEmptyState, TaskBadge, FieldLabel, SubjectChips, controlClass } from "../modules/planning/task-ui";
 import {
   compareDateOnly,
   getPhaseDateRangeError,
@@ -22,8 +22,6 @@ import {
   getSubjectDescendantIds,
   getSubjectPath,
   getSubjectEventLabel,
-  getTaskAvailableDeliverables,
-  getTaskAvailablePhases,
   isActiveTask,
   isValidSubjectEventDraft,
   isValidSubjectDeliverableDraft,
@@ -31,9 +29,6 @@ import {
   sortedSubjectPhases,
   sortedSubjectEvents,
   sortedSubjectDeliverables,
-  sortedTasks,
-  taskPriorities,
-  taskStatuses,
   taskTreeItems,
   type Subject,
   type SubjectDeliverable,
@@ -45,183 +40,40 @@ import {
   type SubjectPhase,
   type SubjectPhaseDraft,
   type Task,
-  type TaskDraft,
-  type TaskPriority,
   type TaskStatus,
 } from "../lib/tasks";
 
-type ViewKey =
-  | "capture"
-  | "companion"
-  | "today"
-  | "ideal-day"
-  | "inbox"
-  | "upcoming"
-  | "waiting"
-  | "completed"
-  | "calendar"
-  | "subjects"
-  | "finances"
-  | "nutrition"
-  | "locations"
-  | "expectations";
+type ViewKey = LegacyWorkspaceView;
 type SubjectViewMode = "folders" | "horizon";
-type EditableTaskPatch = Partial<
-  Pick<
-    Task,
-    | "title"
-    | "notes"
-    | "subjectIds"
-    | "phaseId"
-    | "deliverableId"
-    | "parentTaskId"
-    | "hacerEl"
-    | "venceEl"
-    | "priority"
-    | "status"
-    | "aiSuggestion"
-  >
->;
-
-type SubjectTreeItem = {
-  subject: Subject;
-  depth: number;
-  hasChildren: boolean;
-};
-
 const viewLabels: Record<ViewKey, string> = {
-  capture: "Ingreso",
   companion: "Compañía",
   today: "Hoy",
   "ideal-day": "Mi día ideal",
-  inbox: "Bandeja",
-  upcoming: "Proximas",
+  upcoming: "Próximas",
+  unassigned: "Sin asunto",
   waiting: "Esperando",
   completed: "Completadas",
   calendar: "Calendario",
   subjects: "Asuntos",
-  finances: "Finanzas",
   nutrition: "Nutrición",
   locations: "Ubicaciones",
   expectations: "Esperas",
 };
 
 const viewDescriptions: Record<ViewKey, string> = {
-  capture: "Captura por texto o voz; la IA lo deja listo para que lo proceses en Bandeja.",
   companion: "Un lugar para pensar en voz alta, contar cómo viene el día y retomar cada conversación cuando quieras.",
   today: "Lo que requiere atención en esta fecha.",
   "ideal-day": "Elegí una fecha y definí los objetivos que querés lograr ese día.",
-  inbox: "Capturas de cualquier tipo, con campos sugeridos para que decidas dónde registrarlas.",
   upcoming: "El trabajo que se acerca en los próximos días.",
+  unassigned: "Tareas revisadas que todavía no tienen asunto.",
   waiting: "Tareas detenidas por una respuesta o condición externa.",
   completed: "El registro de lo que ya resolviste.",
   calendar: "Tus eventos, hitos y vencimientos, ordenados en el tiempo.",
   subjects: "Explora tus asuntos por carpetas u horizonte y abre su detalle para gestionar las tareas.",
-  finances: "Ingresos, egresos, vencimientos y saldos de tus cuentas, sin mezclar monedas.",
   nutrition: "Planificá, registrá y prepará tus comidas desde un mismo cuaderno diario.",
   locations: "Planificá dónde debés estar y registrá tu recorrido real, día a día y por horario.",
   expectations: "Entregas, respuestas y novedades que dependen de otros y querés confirmar cuando llegue el día.",
 };
-
-function ViewIcon({ view }: { view: ViewKey }) {
-  const paths: Record<ViewKey, React.ReactNode> = {
-    "ideal-day": <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>,
-    capture: <><path d="M12 3v11" /><path d="M8 7a4 4 0 0 1 8 0v4a4 4 0 0 1-8 0V7Z" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></>,
-    companion: <><path d="M5 5.5h14v10H9l-4 3v-13Z" /><path d="M9 9h6M9 12h4" /></>,
-    today: <><circle cx="12" cy="12" r="3.5" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" /></>,
-    inbox: <><path d="M4 5.5h16v13H4z" /><path d="M4 14h4l1.5 2h5l1.5-2h4" /></>,
-    upcoming: <><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M8 3v4M16 3v4M3.5 10h17" /></>,
-    waiting: <><circle cx="12" cy="12" r="9" /><path d="M9.5 8.5v7M14.5 8.5v7" /></>,
-    completed: <><circle cx="12" cy="12" r="9" /><path d="m8 12 2.5 2.5L16.5 8.5" /></>,
-    calendar: <><rect x="3.5" y="4.5" width="17" height="16" rx="2" /><path d="M8 2.5v4M16 2.5v4M3.5 9.5h17M8 13h2M14 13h2M8 17h2" /></>,
-    subjects: <><path d="M4 6.5h7l2 2H20v10H4z" /><path d="M4 10h16" /></>,
-    finances: <><rect x="3.5" y="5" width="17" height="14" rx="2" /><path d="M7 9.5h10M7 14.5h4M15.5 13v3M14 14.5h3" /></>,
-    nutrition: <><path d="M7 3v8M10 3v8M7 7h3M8.5 11v10M16 3c2 3 2 7 0 10M16 3v18" /></>,
-    locations: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></>,
-    expectations: <><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2M4 4l2 2M20 4l-2 2" /></>,
-  };
-
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      {paths[view]}
-    </svg>
-  );
-}
-
-function formatDate(value: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  const [year, month, day] = value.split("-");
-  return `${day}/${month}/${year}`;
-}
-
-function getStatusLabel(status: TaskStatus) {
-  return taskStatuses.find((item) => item.value === status)?.label ?? status;
-}
-
-function getPriorityLabel(priority: TaskPriority) {
-  return taskPriorities.find((item) => item.value === priority)?.label ?? priority;
-}
-
-function subjectLabels(subjects: Subject[], subjectIds: string[]) {
-  if (subjectIds.length === 0) {
-    return ["Sin asunto"];
-  }
-
-  return subjectIds.map((id) => getSubjectPath(subjects, id));
-}
-
-function taskParentLabel(tasks: Task[], parentTaskId: string | null) {
-  if (!parentTaskId) {
-    return "Tarea raiz";
-  }
-
-  return tasks.find((task) => task.id === parentTaskId)?.title ?? "Tarea superior";
-}
-
-function taskMatchesQuery(
-  task: Task,
-  tasks: Task[],
-  subjects: Subject[],
-  phases: SubjectPhase[],
-  query: string,
-) {
-  const normalizedQuery = query.trim().toLowerCase();
-
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  const labels = subjectLabels(subjects, task.subjectIds);
-  const horizons = task.subjectIds.map((id) => {
-    const subject = subjects.find((item) => item.id === id);
-    return subject ? getHorizonLabel(subject.horizon) : "";
-  });
-  const searchable = [
-    task.title,
-    task.notes,
-    taskParentLabel(tasks, task.parentTaskId),
-    ...labels,
-    ...horizons,
-    getStatusLabel(task.status),
-    getPriorityLabel(task.priority),
-    getPhaseLabel(phases, task.phaseId),
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  return searchable.includes(normalizedQuery);
-}
-
-function getPhaseLabel(phases: SubjectPhase[], phaseId: string | null) {
-  if (!phaseId) {
-    return "Directamente en el asunto";
-  }
-
-  return phases.find((phase) => phase.id === phaseId)?.name ?? "Fase no disponible";
-}
 
 function PhaseChip({ phase }: { phase: SubjectPhase | null }) {
   if (!phase) {
@@ -255,129 +107,6 @@ function getSubjectAncestorIds(subjects: Subject[], subjectId: string | null): s
   return ancestors;
 }
 
-function getSubjectTreeItems(subjects: Subject[], expandedSubjectIds: Set<string>): SubjectTreeItem[] {
-  const subjectIds = new Set(subjects.map((subject) => subject.id));
-  const childrenByParent = new Map<string | null, Subject[]>();
-
-  for (const subject of subjects) {
-    const parentId =
-      subject.parentSubjectId && subjectIds.has(subject.parentSubjectId)
-        ? subject.parentSubjectId
-        : null;
-    const siblings = childrenByParent.get(parentId) ?? [];
-    siblings.push(subject);
-    childrenByParent.set(parentId, siblings);
-  }
-
-  for (const siblings of childrenByParent.values()) {
-    siblings.sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  const items: SubjectTreeItem[] = [];
-
-  function walk(subject: Subject, depth: number, visited: Set<string>) {
-    if (visited.has(subject.id)) {
-      return;
-    }
-
-    const nextVisited = new Set(visited);
-    nextVisited.add(subject.id);
-    const children = childrenByParent.get(subject.id) ?? [];
-
-    items.push({
-      subject,
-      depth,
-      hasChildren: children.length > 0,
-    });
-
-    if (!expandedSubjectIds.has(subject.id)) {
-      return;
-    }
-
-    for (const child of children) {
-      walk(child, depth + 1, nextVisited);
-    }
-  }
-
-  for (const root of childrenByParent.get(null) ?? []) {
-    walk(root, 0, new Set());
-  }
-
-  return items;
-}
-
-function sortedSubjects(subjects: Subject[]) {
-  return [...subjects].sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function TaskEmptyState({ label, hint }: { label: string; hint?: string }) {
-  return (
-    <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-[#344562] bg-[#0d1725]/75 px-6 py-10 text-center">
-      <div className="max-w-sm">
-        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-[#365079] bg-[#132642] text-lg text-[#82afff]">→</span>
-        <p className="mt-4 text-sm font-bold text-[#c9d6eb]">{label}</p>
-        {hint ? <p className="mt-1.5 text-xs leading-5 text-[#7f91ad]">{hint}</p> : null}
-      </div>
-    </div>
-  );
-}
-
-function TaskBadge({
-  children,
-  tone = "neutral",
-}: {
-  children: React.ReactNode;
-  tone?: "neutral" | "warning" | "danger" | "info";
-}) {
-  const styles = {
-    neutral: "border-[#3b506e] bg-[#18283e] text-[#c1cee1]",
-    warning: "border-[#745a28] bg-[#2b2415] text-[#f2be67]",
-    danger: "border-[#7a3d32] bg-[#2e1716] text-[#ff9d88]",
-    info: "border-[#38659a] bg-[#132844] text-[#82afff]",
-  };
-
-  return (
-    <span className={`rounded-full border px-2.5 py-1 font-mono text-[10px] font-black ${styles[tone]}`}>
-      {children}
-    </span>
-  );
-}
-
-function FieldLabel({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#8090ad]">
-      {label}
-      {children}
-    </label>
-  );
-}
-
-const controlClass =
-  "h-11 w-full rounded-xl border border-[#324968] bg-[#0b1726] px-3 text-sm font-normal normal-case tracking-normal text-[#dce6f8] outline-none transition placeholder:text-[#61708d] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15";
-
-function SubjectChips({ subjects, subjectIds }: { subjects: Subject[]; subjectIds: string[] }) {
-  const labels = subjectLabels(subjects, subjectIds);
-
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {labels.map((label) => (
-        <span
-          key={label}
-          className="rounded-full border border-[#35557e] bg-[#132642] px-2.5 py-1 text-[10px] font-bold text-[#a9cbff]"
-        >
-          {label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function TaskRow({
   task,
   subjects,
@@ -386,9 +115,6 @@ function TaskRow({
   today,
   onStatus,
   onOpen,
-  accounts,
-  onApplySuggestion,
-  onOpenModule,
 }: {
   task: Task;
   subjects: Subject[];
@@ -397,9 +123,6 @@ function TaskRow({
   today: string;
   onStatus: (taskId: string, status: TaskStatus) => void;
   onOpen: (taskId: string) => void;
-  accounts: FinanceAccount[];
-  onApplySuggestion: (taskId: string, action: InboxSuggestionAction) => void;
-  onOpenModule: (module: "finances" | "subjects") => void;
 }) {
   const isCompleted = task.status === "completed";
   const isDueToday = task.venceEl === today;
@@ -462,741 +185,9 @@ function TaskRow({
         <span className="sr-only">Abrir detalle de {task.title}</span>
       </button>
       {!isCompleted && task.aiSuggestion ? (
-        <InboxAiSuggestion
-          suggestion={task.aiSuggestion}
-          accounts={accounts}
-          subjects={subjects}
-          today={today}
-          onApply={(action) => onApplySuggestion(task.id, action)}
-          onOpenModule={onOpenModule}
-        />
+        <Link href={workspaceHref("inbox")} className="text-sm font-semibold text-[#a8c7ff] underline underline-offset-4 sm:col-start-3">Revisar en Bandeja</Link>
       ) : null}
     </article>
-  );
-}
-
-function TaskEditModal({
-  task,
-  subjects,
-  deliverables,
-  phases,
-  today,
-  onPatch,
-  onStatus,
-  onPriority,
-  onDelete,
-  onClose,
-  getAvailableParentTasksForTask,
-}: {
-  task: Task | null;
-  subjects: Subject[];
-  deliverables: SubjectDeliverable[];
-  phases: SubjectPhase[];
-  today: string;
-  onPatch: (taskId: string, patch: EditableTaskPatch) => void;
-  onStatus: (taskId: string, status: TaskStatus) => void;
-  onPriority: (taskId: string, priority: TaskPriority) => void;
-  onDelete: (taskId: string) => void;
-  onClose: () => void;
-  getAvailableParentTasksForTask: (taskId: string) => Task[];
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [isSubjectPickerOpen, setIsSubjectPickerOpen] = useState(false);
-
-  if (!task) {
-    return null;
-  }
-
-  const isCompleted = task.status === "completed";
-  const isDueToday = task.venceEl === today;
-  const isOverdue =
-    Boolean(task.venceEl) && compareDateOnly(task.venceEl as string, today) < 0 && !isCompleted;
-  const isUnplanned = isActiveTask(task) && Boolean(task.venceEl) && !task.hacerEl;
-  const parentOptions = getAvailableParentTasksForTask(task.id);
-  const parentTask = parentOptions.find((option) => option.id === task.parentTaskId);
-  const availablePhases = getTaskAvailablePhases(phases, task.subjectIds);
-  const availableDeliverables = getTaskAvailableDeliverables(
-    deliverables,
-    task.subjectIds,
-  );
-  const selectedPhase = phases.find((phase) => phase.id === task.phaseId) ?? null;
-  const selectedDeliverable =
-    deliverables.find((deliverable) => deliverable.id === task.deliverableId) ?? null;
-
-  function handleClose() {
-    setIsEditing(false);
-    onClose();
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[#050812]/75 px-4 py-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="edit-task-title"
-    >
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-lg border border-[#31415e] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]">
-        <div className="flex items-center justify-between gap-4 border-b border-[#263852] px-4 py-4 sm:px-5">
-          <div className="min-w-0">
-            <p className="text-xs font-black uppercase text-[#8ab4f8]">Detalle de tarea</p>
-            <h3 id="edit-task-title" className="mt-1 truncate text-xl font-black text-[#eef4ff]">
-              {task.title}
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-          >
-            x
-          </button>
-        </div>
-
-        <div className="grid gap-4 p-4 sm:p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <TaskBadge tone={task.status === "waiting" ? "info" : "neutral"}>
-              {getStatusLabel(task.status)}
-            </TaskBadge>
-            {isOverdue ? <TaskBadge tone="danger">Vencida</TaskBadge> : null}
-            {isDueToday ? <TaskBadge tone="warning">Vence hoy</TaskBadge> : null}
-            {isUnplanned ? <TaskBadge tone="warning">Sin plan</TaskBadge> : null}
-          </div>
-
-          {isEditing ? (
-            <>
-              <input
-                value={task.title}
-                onChange={(event) => onPatch(task.id, { title: event.target.value })}
-                aria-label="Titulo de la tarea"
-                className="h-12 min-w-0 rounded-lg border border-[#33435f] bg-[#0c1320] px-4 text-base font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#6d7b97] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
-              />
-
-              <textarea
-                value={task.notes}
-                onChange={(event) => onPatch(task.id, { notes: event.target.value })}
-                rows={4}
-                aria-label="Notas"
-                placeholder="Notas"
-                className="w-full resize-none rounded-md border border-[#2f3e59] bg-[#101827] px-3 py-2 text-sm text-[#cbd7ee] outline-none transition placeholder:text-[#61708d] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
-              />
-            </>
-          ) : (
-            <>
-              <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-4 py-3">
-                <p className="text-[11px] font-bold uppercase text-[#8090ad]">Titulo</p>
-                <p className="mt-1 text-base font-semibold text-[#eef4ff]">{task.title}</p>
-              </div>
-
-              <div className="min-h-24 rounded-lg border border-[#2f3e59] bg-[#101827] px-4 py-3">
-                <p className="text-[11px] font-bold uppercase text-[#8090ad]">Notas</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-[#cbd7ee]">
-                  {task.notes || "Sin notas"}
-                </p>
-              </div>
-            </>
-          )}
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {isEditing ? (
-              <>
-                <FieldLabel label="Estado">
-                  <select
-                    value={task.status}
-                    onChange={(event) => onStatus(task.id, event.target.value as TaskStatus)}
-                    className={controlClass}
-                  >
-                    {taskStatuses.map((status) => (
-                      <option key={status.value} value={status.value}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </FieldLabel>
-
-                <FieldLabel label="Depende de">
-                  <select
-                    value={task.parentTaskId ?? ""}
-                    onChange={(event) =>
-                      onPatch(task.id, { parentTaskId: event.target.value || null })
-                    }
-                    className={controlClass}
-                  >
-                    <option value="">Tarea raiz</option>
-                    {parentOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.title}
-                      </option>
-                    ))}
-                  </select>
-                </FieldLabel>
-
-                <FieldLabel label="Hacer el">
-                  <input
-                    type="date"
-                    value={task.hacerEl ?? ""}
-                    onChange={(event) =>
-                      onPatch(task.id, { hacerEl: event.target.value || null })
-                    }
-                    className={controlClass}
-                  />
-                </FieldLabel>
-
-                <FieldLabel label="Vence el">
-                  <input
-                    type="date"
-                    value={task.venceEl ?? ""}
-                    onChange={(event) =>
-                      onPatch(task.id, { venceEl: event.target.value || null })
-                    }
-                    className={controlClass}
-                  />
-                </FieldLabel>
-
-                <FieldLabel label="Prioridad">
-                  <select
-                    value={task.priority}
-                    onChange={(event) => onPriority(task.id, event.target.value as TaskPriority)}
-                    className={controlClass}
-                  >
-                    {taskPriorities.map((priority) => (
-                      <option key={priority.value} value={priority.value}>
-                        {priority.label}
-                      </option>
-                    ))}
-                  </select>
-                </FieldLabel>
-
-                <FieldLabel label="Fase">
-                  <select
-                    value={task.phaseId ?? ""}
-                    onChange={(event) =>
-                      onPatch(task.id, { phaseId: event.target.value || null })
-                    }
-                    className={controlClass}
-                  >
-                    <option value="">Directamente en el asunto</option>
-                    {availablePhases.map((phase) => (
-                      <option key={phase.id} value={phase.id}>
-                        {getSubjectPath(subjects, phase.subjectId)} · {phase.name}
-                      </option>
-                    ))}
-                  </select>
-                </FieldLabel>
-
-                <FieldLabel label="Entregable">
-                  <select
-                    value={task.deliverableId ?? ""}
-                    onChange={(event) =>
-                      onPatch(task.id, { deliverableId: event.target.value || null })
-                    }
-                    className={controlClass}
-                  >
-                    <option value="">Sin entregable</option>
-                    {availableDeliverables.map((deliverable) => (
-                      <option key={deliverable.id} value={deliverable.id}>
-                        {getSubjectPath(subjects, deliverable.subjectId)} · {deliverable.name}
-                      </option>
-                    ))}
-                  </select>
-                </FieldLabel>
-
-                <FieldLabel label="Asuntos">
-                  <div className="grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3">
-                    <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
-                    <button
-                      type="button"
-                      onClick={() => setIsSubjectPickerOpen(true)}
-                      className="h-10 w-fit rounded-md border border-[#344562] px-3 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-                    >
-                      Añadir asuntos
-                    </button>
-                  </div>
-                </FieldLabel>
-              </>
-            ) : (
-              <>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Estado</p>
-                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
-                    {getStatusLabel(task.status)}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Entregable</p>
-                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
-                    {selectedDeliverable?.name ?? "Sin entregable"}
-                  </p>
-                  {selectedDeliverable ? (
-                    <p className="mt-1 text-xs text-[#91a0bb]">
-                      {getSubjectPath(subjects, selectedDeliverable.subjectId)}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Depende de</p>
-                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
-                    {parentTask?.title ?? "Tarea raiz"}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Hacer el</p>
-                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
-                    {task.hacerEl ? formatDate(task.hacerEl) : "Sin fecha"}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Vence el</p>
-                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
-                    {task.venceEl ? formatDate(task.venceEl) : "Sin fecha"}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Prioridad</p>
-                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
-                    {getPriorityLabel(task.priority)}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Fase</p>
-                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
-                    {getPhaseLabel(phases, task.phaseId)}
-                  </p>
-                  {selectedPhase ? (
-                    <p className="mt-1 text-xs text-[#91a0bb]">
-                      {getSubjectPath(subjects, selectedPhase.subjectId)}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-2">
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Asuntos</p>
-                  <div className="mt-2">
-                    <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
-            <button
-              type="button"
-              onClick={() => {
-                onDelete(task.id);
-                handleClose();
-              }}
-              className="h-10 rounded-md border border-[#55352f] px-4 text-sm font-bold text-[#ff9d88] transition hover:border-[#7a3d32] hover:bg-[#2e1716] focus:outline-none focus:ring-2 focus:ring-[#ff9d88]/30"
-            >
-              Borrar
-            </button>
-            {isEditing ? (
-              <button
-                type="button"
-                onClick={() => setIsEditing(false)}
-                className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
-              >
-                Guardar cambios
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-                >
-                  Editar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
-                >
-                  Cerrar
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-      <TaskSubjectPickerModal
-        key={`${task.id}-${isSubjectPickerOpen ? task.subjectIds.join("|") : "closed"}`}
-        isOpen={isSubjectPickerOpen}
-        subjects={subjects}
-        selectedSubjectIds={task.subjectIds}
-        onApply={(subjectIds) => {
-          onPatch(task.id, { subjectIds });
-          setIsSubjectPickerOpen(false);
-        }}
-        onClose={() => setIsSubjectPickerOpen(false)}
-      />
-    </div>
-  );
-}
-
-function TaskSubjectPickerModal({
-  isOpen,
-  subjects,
-  selectedSubjectIds,
-  onApply,
-  onClose,
-}: {
-  isOpen: boolean;
-  subjects: Subject[];
-  selectedSubjectIds: string[];
-  onApply: (subjectIds: string[]) => void;
-  onClose: () => void;
-}) {
-  const [draftSubjectIds, setDraftSubjectIds] = useState<string[]>(selectedSubjectIds);
-
-  if (!isOpen) {
-    return null;
-  }
-
-  const selectedIds = new Set(draftSubjectIds);
-  const expandedSubjectIds = new Set(subjects.map((subject) => subject.id));
-  const treeItems = getSubjectTreeItems(subjects, expandedSubjectIds);
-
-  function toggleSubject(subjectId: string) {
-    setDraftSubjectIds((current) =>
-      current.includes(subjectId)
-        ? current.filter((id) => id !== subjectId)
-        : [...current, subjectId],
-    );
-  }
-
-  function handleClose() {
-    setDraftSubjectIds(selectedSubjectIds);
-    onClose();
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-[#050812]/75 px-4 py-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="task-subject-picker-title"
-    >
-      <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[#31415e] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]">
-        <div className="flex items-center justify-between gap-4 border-b border-[#263852] px-4 py-4 sm:px-5">
-          <div>
-            <p className="text-xs font-black uppercase text-[#8ab4f8]">Asuntos</p>
-            <h3 id="task-subject-picker-title" className="mt-1 text-xl font-black text-[#eef4ff]">
-              Añadir asuntos
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-          >
-            x
-          </button>
-        </div>
-
-        <div className="grid gap-4 p-4 sm:p-5">
-          <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-3">
-            {subjects.length === 0 ? (
-              <TaskEmptyState label="Sin asuntos todavia." />
-            ) : (
-              <div className="space-y-1">
-                {treeItems.map(({ subject, depth }) => (
-                  <label
-                    key={subject.id}
-                    className="grid min-h-10 cursor-pointer grid-cols-[24px_minmax(0,1fr)] items-center gap-2 rounded-md border border-[#24344f] bg-[#0f1726] px-2 py-2 transition hover:border-[#3f5578] hover:bg-[#182238]"
-                    style={{ marginLeft: depth ? `${Math.min(depth, 6) * 18}px` : undefined }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(subject.id)}
-                      onChange={() => toggleSubject(subject.id)}
-                      className="h-4 w-4 accent-[#8ab4f8]"
-                    />
-                    <span className="truncate text-sm font-semibold text-[#eef4ff]">
-                      {subject.name}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-[#2f3e59] bg-[#101827] px-3 py-3">
-            <p className="text-[11px] font-bold uppercase text-[#8090ad]">Seleccionados</p>
-            <div className="mt-2">
-              <SubjectChips subjects={subjects} subjectIds={draftSubjectIds} />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={() => onApply(draftSubjectIds)}
-              className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
-            >
-              Añadir
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TaskCreateModal({
-  isOpen,
-  subjects,
-  deliverables,
-  phases,
-  tasks,
-  onAddTask,
-  onClose,
-  defaultSubjectIds = [],
-  defaultDeliverableId = null,
-}: {
-  isOpen: boolean;
-  subjects: Subject[];
-  deliverables: SubjectDeliverable[];
-  phases: SubjectPhase[];
-  tasks: Task[];
-  onAddTask: (draft: TaskDraft) => void;
-  onClose: () => void;
-  defaultSubjectIds?: string[];
-  defaultDeliverableId?: string | null;
-}) {
-  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(defaultSubjectIds);
-  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
-  const [selectedDeliverableId, setSelectedDeliverableId] = useState<string | null>(
-    defaultDeliverableId,
-  );
-  const [isSubjectPickerOpen, setIsSubjectPickerOpen] = useState(false);
-
-  if (!isOpen) {
-    return null;
-  }
-
-  function handleClose() {
-    setSelectedSubjectIds(defaultSubjectIds);
-    setSelectedPhaseId(null);
-    setSelectedDeliverableId(defaultDeliverableId);
-    onClose();
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const title = String(data.get("title") ?? "");
-    const notes = String(data.get("notes") ?? "");
-    const parentTaskId = String(data.get("parentTaskId") ?? "");
-    const hacerEl = String(data.get("hacerEl") ?? "");
-    const venceEl = String(data.get("venceEl") ?? "");
-    const priority = String(data.get("priority") ?? "normal") as TaskPriority;
-
-    if (!title.trim()) {
-      return;
-    }
-
-    onAddTask({
-      title,
-      notes,
-      subjectIds: selectedSubjectIds,
-      phaseId: selectedPhaseId,
-      deliverableId: selectedDeliverableId,
-      parentTaskId: parentTaskId || null,
-      hacerEl: hacerEl || null,
-      venceEl: venceEl || null,
-      priority,
-    });
-    form.reset();
-    handleClose();
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[#050812]/75 px-4 py-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="new-task-title"
-    >
-      <div className="w-full max-w-3xl rounded-lg border border-[#31415e] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]">
-        <div className="flex items-center justify-between gap-4 border-b border-[#263852] px-4 py-4 sm:px-5">
-          <div>
-            <p className="text-xs font-black uppercase text-[#8ab4f8]">Nueva tarea</p>
-            <h3 id="new-task-title" className="mt-1 text-xl font-black text-[#eef4ff]">
-              Crear tarea
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-          >
-            x
-          </button>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="grid gap-4 p-4 sm:p-5"
-        >
-          <input
-            name="title"
-            placeholder="Titulo de la tarea"
-            aria-label="Titulo de la nueva tarea"
-            autoFocus
-            className="h-12 min-w-0 rounded-lg border border-[#33435f] bg-[#0c1320] px-4 text-base font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#6d7b97] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
-          />
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <FieldLabel label="Notas">
-              <input
-                name="notes"
-                placeholder="Notas"
-                aria-label="Notas de la nueva tarea"
-                className={controlClass}
-              />
-            </FieldLabel>
-
-            <FieldLabel label="Depende de">
-              <select name="parentTaskId" aria-label="Tarea superior" className={controlClass}>
-                <option value="">Tarea raiz</option>
-                {tasks.map((task) => (
-                  <option key={task.id} value={task.id}>
-                    {task.title}
-                  </option>
-                ))}
-              </select>
-            </FieldLabel>
-
-            <FieldLabel label="Hacer el">
-              <input
-                type="date"
-                name="hacerEl"
-                aria-label="Hacer el"
-                className={controlClass}
-              />
-            </FieldLabel>
-
-            <FieldLabel label="Vence el">
-              <input
-                type="date"
-                name="venceEl"
-                aria-label="Vence el"
-                className={controlClass}
-              />
-            </FieldLabel>
-
-            <FieldLabel label="Prioridad">
-              <select
-                name="priority"
-                defaultValue="normal"
-                aria-label="Prioridad"
-                className={controlClass}
-              >
-                {taskPriorities.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </FieldLabel>
-
-            <FieldLabel label="Fase">
-              <select
-                value={selectedPhaseId ?? ""}
-                onChange={(event) => setSelectedPhaseId(event.target.value || null)}
-                aria-label="Fase de la tarea"
-                className={controlClass}
-              >
-                <option value="">Directamente en el asunto</option>
-                {getTaskAvailablePhases(phases, selectedSubjectIds).map((phase) => (
-                  <option key={phase.id} value={phase.id}>
-                    {getSubjectPath(subjects, phase.subjectId)} · {phase.name}
-                  </option>
-                ))}
-              </select>
-            </FieldLabel>
-
-            <FieldLabel label="Entregable">
-              <select
-                value={selectedDeliverableId ?? ""}
-                onChange={(event) => setSelectedDeliverableId(event.target.value || null)}
-                aria-label="Entregable de la tarea"
-                className={controlClass}
-              >
-                <option value="">Sin entregable</option>
-                {getTaskAvailableDeliverables(deliverables, selectedSubjectIds).map(
-                  (deliverable) => (
-                    <option key={deliverable.id} value={deliverable.id}>
-                      {getSubjectPath(subjects, deliverable.subjectId)} · {deliverable.name}
-                    </option>
-                  ),
-                )}
-              </select>
-            </FieldLabel>
-
-            <FieldLabel label="Asuntos">
-              <div className="grid min-h-24 gap-3 rounded-md border border-[#32415d] bg-[#0f1726] px-3 py-3">
-                <SubjectChips subjects={subjects} subjectIds={selectedSubjectIds} />
-                <button
-                  type="button"
-                  onClick={() => setIsSubjectPickerOpen(true)}
-                  className="h-10 w-fit rounded-md border border-[#344562] px-3 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-                >
-                  Agregar asuntos
-                </button>
-              </div>
-            </FieldLabel>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
-            >
-              Crear tarea
-            </button>
-          </div>
-        </form>
-      </div>
-      <TaskSubjectPickerModal
-        key={`new-task-${isSubjectPickerOpen ? selectedSubjectIds.join("|") : "closed"}`}
-        isOpen={isSubjectPickerOpen}
-        subjects={subjects}
-        selectedSubjectIds={selectedSubjectIds}
-        onApply={(subjectIds) => {
-          setSelectedSubjectIds(subjectIds);
-          const selectedPhase = phases.find((phase) => phase.id === selectedPhaseId);
-          if (selectedPhase && !subjectIds.includes(selectedPhase.subjectId)) {
-            setSelectedPhaseId(null);
-          }
-          const selectedDeliverable = deliverables.find(
-            (deliverable) => deliverable.id === selectedDeliverableId,
-          );
-          if (selectedDeliverable && !subjectIds.includes(selectedDeliverable.subjectId)) {
-            setSelectedDeliverableId(null);
-          }
-          setIsSubjectPickerOpen(false);
-        }}
-        onClose={() => setIsSubjectPickerOpen(false)}
-      />
-    </div>
   );
 }
 
@@ -2888,11 +1879,15 @@ function SubjectHorizonBoard({
   );
 }
 
-export default function TaskManager() {
-  const workspace = useTaskWorkspace();
-  const [activeView, setActiveView] = useState<ViewKey>("capture");
+export default function TaskManager({ activeView, tabs, initialSubjectId }: {
+  activeView: ViewKey;
+  tabs: readonly WorkspaceView[];
+  initialSubjectId: string | null;
+}) {
+  const workspace = useWorkspace();
+  const router = useRouter();
   const [companionConversationCount, setCompanionConversationCount] = useState(0);
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(initialSubjectId);
   const [searchQuery, setSearchQuery] = useState("");
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [newTaskDeliverableId, setNewTaskDeliverableId] = useState<string | null>(null);
@@ -2904,7 +1899,6 @@ export default function TaskManager() {
   const searchRef = useRef<HTMLInputElement>(null);
   const subjectDetailRef = useRef<HTMLDivElement>(null);
 
-  const activeTasks = workspace.tasks.filter(isActiveTask);
   const selectedSubject = selectedSubjectId
     ? (workspace.subjects.find((subject) => subject.id === selectedSubjectId) ?? null)
     : null;
@@ -2947,10 +1941,8 @@ export default function TaskManager() {
 
       if (
         event.key.toLowerCase() === "n" &&
-        activeView !== "capture" &&
         activeView !== "companion" &&
         activeView !== "subjects" &&
-        activeView !== "finances" &&
         activeView !== "nutrition" &&
         activeView !== "locations" &&
         activeView !== "ideal-day" &&
@@ -2966,35 +1958,31 @@ export default function TaskManager() {
   }, [activeView]);
 
   const visibleTasks = useMemo(() => {
-    if (activeView === "capture" || activeView === "companion") {
+    if (activeView === "companion") {
       return [];
     }
 
     if (activeView === "today") {
-      return workspace.views.today;
+      return workspace.planning.views.today;
     }
 
-    if (activeView === "inbox") {
-      return workspace.views.inbox;
+    if (activeView === "unassigned") {
+      return workspace.planning.views.unassigned;
     }
 
     if (activeView === "upcoming") {
-      return workspace.views.upcoming;
+      return workspace.planning.views.upcoming;
     }
 
     if (activeView === "waiting") {
-      return workspace.views.waiting;
+      return workspace.planning.views.waiting;
     }
 
     if (activeView === "completed") {
-      return workspace.views.completed;
+      return workspace.planning.views.completed;
     }
 
     if (activeView === "calendar") {
-      return [];
-    }
-
-    if (activeView === "finances") {
       return [];
     }
 
@@ -3011,13 +1999,7 @@ export default function TaskManager() {
     }
 
     if (selectedSubjectId) {
-      const subjectIds = new Set([
-        selectedSubjectId,
-        ...getSubjectDescendantIds(workspace.subjects, selectedSubjectId),
-      ]);
-      return sortedTasks(workspace.tasks.filter((task) =>
-        task.subjectIds.some((subjectId) => subjectIds.has(subjectId)),
-      ));
+      return workspace.planning.getTasksForSubject(selectedSubjectId);
     }
 
     return [];
@@ -3033,23 +2015,22 @@ export default function TaskManager() {
   const filteredTaskItems = useMemo(() => taskTreeItems(filteredTasks), [filteredTasks]);
 
   const navItems: { key: ViewKey; count: number }[] = [
-    { key: "capture", count: workspace.views.inbox.length },
     { key: "companion", count: companionConversationCount },
     { key: "today", count: getTodayOverviewCount(workspace) },
     { key: "ideal-day", count: workspace.idealDayGoals.filter((goal) => goal.date === workspace.today && !goal.completed).length },
-    { key: "inbox", count: workspace.views.inbox.length },
-    { key: "upcoming", count: workspace.views.upcoming.length },
-    { key: "waiting", count: workspace.views.waiting.length },
+    { key: "upcoming", count: workspace.planning.views.upcoming.length },
+    { key: "unassigned", count: workspace.planning.views.unassigned.length },
+    { key: "waiting", count: workspace.planning.views.waiting.length },
     { key: "expectations", count: workspace.expectations.filter((item) => item.status === "pending").length },
-    { key: "completed", count: workspace.views.completed.length },
+    { key: "completed", count: workspace.planning.views.completed.length },
     { key: "calendar", count: workspace.subjectEvents.length },
     { key: "subjects", count: workspace.subjects.length },
-    { key: "finances", count: workspace.financeEntries.length + workspace.financeDuePaymentCounts.pending },
     { key: "nutrition", count: workspace.nutritionPlanItems.filter((item) => item.date === workspace.today).length },
     { key: "locations", count: workspace.locationEntries.filter((item) => item.date === workspace.today).length },
   ];
+  const localNavigation = tabs.flatMap((view) => navItems.filter(({ key }) => key === view));
 
-  const heading = viewLabels[activeView];
+  const heading = activeView === "subjects" ? "Gestionar asuntos" : viewLabels[activeView];
   const hasSearch = searchQuery.trim().length > 0;
   const calendarSearchCount = workspace.subjectEvents.filter((event) =>
     `${event.description} ${getSubjectPath(workspace.subjects, event.subjectId)}`
@@ -3064,450 +2045,342 @@ export default function TaskManager() {
         : "No hay tareas en esta vista.";
   const defaultTaskSubjectIds =
     activeView === "subjects" && selectedSubjectId ? [selectedSubjectId] : [];
-  const totalTasks = activeTasks.length + workspace.views.completed.length;
-  const completionRate = totalTasks
-    ? Math.round((workspace.views.completed.length / totalTasks) * 100)
-    : 0;
-
-  function applySuggestion(taskId: string, action: InboxSuggestionAction) {
-    switch (action.type) {
-      case "task":
-        workspace.patchTask(taskId, { ...action.draft, aiSuggestion: null });
-        return;
-      case "finance_entry": workspace.addFinanceEntry(action.draft); break;
-      case "finance_due_payment": workspace.addFinanceDuePayment(action.draft); break;
-      case "subject_event": workspace.addSubjectEvent(action.subjectId, action.draft); break;
-      case "location": workspace.addLocationEntry(action.draft); break;
-      case "nutrition_hydration": workspace.addNutritionHydration(action.draft); break;
-      case "nutrition_intake": workspace.addNutritionIntake(action.draft); break;
-      case "expectation": workspace.addExpectation(action.draft); break;
-    }
-    workspace.deleteTask(taskId);
+  function navigateToView(view: WorkspaceView, subjectId?: string) {
+    router.push(workspaceHref(view, subjectId));
   }
 
+  if (!workspace.isLoaded) return <WorkspaceLoading />;
+
   return (
-    <main className="relative min-h-screen overflow-x-hidden bg-[#07111d] text-[#eaf1fb]">
+    <main className="relative flex-1 overflow-x-hidden bg-[#07111d] text-[#eaf1fb]">
       <div aria-hidden="true" className="app-grid pointer-events-none absolute inset-0" />
-      {!workspace.isLoaded ? (
-        <div className="fixed inset-0 z-[100] grid place-items-center bg-[#07111d]">
-          <div className="text-center">
-            <span className="mx-auto flex h-12 w-12 animate-pulse items-center justify-center rounded-2xl bg-[#82afff] font-mono font-black text-[#07111d]">E</span>
-            <p className="mt-4 text-sm font-bold text-[#c8d5e8]">Abriendo tu espacio</p>
-            <p className="mt-1 text-xs text-[#7185a3]">Sincronizando tareas y asuntos…</p>
-          </div>
-        </div>
-      ) : null}
-      <div className="relative grid min-h-screen grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[248px_minmax(0,1fr)] lg:grid-rows-1">
-        <nav aria-label="Vistas principales" className="sticky top-0 z-30 min-w-0 max-w-full self-start border-b border-[#20334d] bg-[#0b1624]/95 px-3 py-3 backdrop-blur-xl lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-4 lg:py-5">
-          <div className="flex items-center justify-between gap-4 px-1 lg:block lg:rounded-2xl lg:border lg:border-[#253a57] lg:bg-[#0d1a2a] lg:px-4 lg:py-4 lg:shadow-[0_18px_55px_rgba(0,0,0,0.2)]">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#82afff] font-mono text-sm font-black text-[#07111d] shadow-[0_8px_22px_rgba(130,175,255,0.25)]">E</span>
-              <div className="min-w-0">
-                <p className="font-mono text-[10px] font-black uppercase tracking-[0.2em] text-[#82afff]">Epixodo</p>
-                <h1 className="truncate text-base font-black tracking-[-0.02em] text-[#f4f7fc] lg:text-lg">Mi espacio</h1>
-              </div>
-            </div>
-            <div className="hidden lg:mt-5 lg:block">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <p className="font-mono text-2xl font-black text-[#f4f7fc]">{activeTasks.length}</p>
-                  <p className="text-xs font-semibold text-[#8192ad]">tareas activas</p>
-                </div>
-                <span className="font-mono text-xs font-bold text-[#63d3a5]">{completionRate}% resuelto</span>
-              </div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#1b2c43]">
-                <span className="block h-full rounded-full bg-[#63d3a5] transition-[width] duration-500" style={{ width: `${completionRate}%` }} />
-              </div>
-            </div>
-            <MobileNavigation>
-              {navItems.map((item) => (
-                <button key={item.key} type="button" aria-current={activeView === item.key ? "page" : undefined} onClick={() => { setActiveView(item.key); setSearchQuery(""); }} className={`grid min-h-12 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold ${activeView === item.key ? "bg-[#17345a] text-[#f2f6ff]" : "text-[#9fb0c9] hover:bg-[#192d46]"}`}>
-                  <ViewIcon view={item.key} />
-                  <span>{viewLabels[item.key]}</span>
-                  {item.count > 0 ? <span className="rounded-full bg-[#1d304a] px-2 py-0.5 font-mono text-[10px] text-[#aebbd0]">{item.count}</span> : null}
-                </button>
+      <div className="relative min-w-0">
+        {localNavigation.length > 1 ? (
+          <nav aria-label="Vistas del módulo" className="border-b border-[#20334d] bg-[#0b1624]">
+            <div className="mx-auto flex max-w-[1500px] flex-wrap gap-x-2 gap-y-1 px-4 py-2 md:px-6">
+              {localNavigation.map(({ key, count }) => (
+                <Link key={key} href={workspaceHref(key)} prefetch={false} aria-current={activeView === key ? "page" : undefined} className="flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-[#b5c6de] hover:bg-[#192d46] aria-[current=page]:bg-[#17345a] aria-[current=page]:text-[#f2f6ff]">
+                  <ViewIcon view={key} />
+                  {viewLabels[key]}
+                  {count > 0 ? <span className="font-mono text-xs opacity-80">{count}</span> : null}
+                </Link>
               ))}
-            </MobileNavigation>
-          </div>
-
-          <div className="hidden lg:mt-6 lg:grid lg:gap-1">
-            {navItems.map((item) => {
-              const isActive = activeView === item.key;
-
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => { setActiveView(item.key); setSearchQuery(""); }}
-                  className={`flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-left text-sm font-bold transition duration-200 focus:outline-none focus:ring-2 focus:ring-[#82afff]/30 lg:grid lg:h-11 lg:w-full lg:grid-cols-[20px_minmax(0,1fr)_auto] lg:gap-3 ${
-                    isActive
-                      ? "border-[#3c68a5] bg-[#17345a] text-[#f2f6ff] shadow-[inset_0_0_0_1px_rgba(130,175,255,0.08)]"
-                      : "border-[#20334d] bg-[#0d1a2a] text-[#9fb0c9] hover:border-[#365176] hover:bg-[#13233a] hover:text-[#eef4ff] lg:border-transparent lg:bg-transparent"
-                  }`}
-                >
-                  <span className={isActive ? "text-[#82afff]" : "text-[#7185a3]"}><ViewIcon view={item.key} /></span>
-                  <span className="truncate">{viewLabels[item.key]}</span>
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] ${
-                      isActive ? "bg-[#82afff] text-[#07111f]" : "bg-[#1d304a] text-[#aebbd0]"
-                    }`}
-                  >
-                    {item.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-auto hidden space-y-4 rounded-2xl border border-[#243955] bg-[#0d1a2a] p-3 lg:block">
-            <LogoutButton />
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Atajos</p>
-            <div className="mt-2 grid gap-2 text-xs text-[#91a3bc]">
-              <div className="flex items-center justify-between"><span>Buscar</span><kbd className="rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[#cad8ed]">/</kbd></div>
-              <div className="flex items-center justify-between"><span>Nueva tarea</span><kbd className="rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[#cad8ed]">N</kbd></div>
-              <div className="flex items-center justify-between"><span>Cerrar</span><kbd className="rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[#cad8ed]">Esc</kbd></div>
             </div>
-          </div>
-        </nav>
+          </nav>
+        ) : null}
+      <header className="hidden lg:block border-b border-[#20334d] bg-[#07111d]/88 px-4 py-3 backdrop-blur-xl md:px-6">
+        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3">
+          <label className="relative min-w-[220px] flex-1">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7890b2]">
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+            </span>
+            <input
+              ref={searchRef}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={activeView === "ideal-day" ? "Buscar objetivos del día…" : activeView === "companion" ? "Buscar conversaciones…" : activeView === "nutrition" ? "Buscar alimentos y preparaciones…" : activeView === "locations" ? "Buscar lugares y notas…" : "Buscar en tu espacio…"}
+              aria-label={activeView === "ideal-day" ? "Buscar objetivos del día" : activeView === "companion" ? "Buscar conversaciones" : activeView === "nutrition" ? "Buscar alimentos y preparaciones" : activeView === "locations" ? "Buscar lugares y notas" : "Buscar en tu espacio"}
+              className="h-11 w-full rounded-xl border border-[#2b4261] bg-[#0d1a2a] pl-10 pr-14 text-sm font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#667b9a] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
+            />
+            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#8295b0] sm:block">/</kbd>
+          </label>
 
-        <div className="min-w-0">
-          {activeView !== "capture" ? <header className="sticky top-0 z-20 hidden lg:block border-b border-[#20334d] bg-[#07111d]/88 px-4 py-3 backdrop-blur-xl md:px-6">
-            <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3">
-              <label className="relative min-w-[220px] flex-1">
-                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7890b2]">
-                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
-                </span>
-                <input
-                  ref={searchRef}
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder={activeView === "ideal-day" ? "Buscar objetivos del día…" : activeView === "companion" ? "Buscar conversaciones…" : activeView === "finances" ? "Buscar movimientos y pagos…" : activeView === "nutrition" ? "Buscar alimentos y preparaciones…" : activeView === "locations" ? "Buscar lugares y notas…" : "Buscar en tu espacio…"}
-                  aria-label={activeView === "ideal-day" ? "Buscar objetivos del día" : activeView === "companion" ? "Buscar conversaciones" : activeView === "finances" ? "Buscar movimientos y pagos" : activeView === "nutrition" ? "Buscar alimentos y preparaciones" : activeView === "locations" ? "Buscar lugares y notas" : "Buscar en tu espacio"}
-                  className="h-11 w-full rounded-xl border border-[#2b4261] bg-[#0d1a2a] pl-10 pr-14 text-sm font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#667b9a] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
-                />
-                <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[#334b6d] bg-[#142338] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#8295b0] sm:block">/</kbd>
-              </label>
+        </div>
+      </header>
 
-            </div>
-          </header> : null}
-          {workspace.syncError ? (
-            <p role="alert" className="mx-4 mt-4 rounded-xl border border-[#7a3d32] bg-[#2e1716] p-3 text-sm text-[#ffafa5]">{workspace.syncError}</p>
-          ) : null}
+      <div className="mx-auto grid max-w-[1500px] gap-5 p-4 md:p-6 lg:p-8">
+        <section key={activeView} className="view-enter min-w-0 space-y-6">
+          <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#20334d] pb-5">
+            <div>
+              <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
+                {activeView === "companion"
+                  ? `${companionConversationCount} ${companionConversationCount === 1 ? "conversación guardada" : "conversaciones guardadas"}`
+                  : activeView === "today"
+                  ? hasSearch
+                    ? `${filteredTasks.length} tareas coinciden en una agenda de ${getTodayOverviewCount(workspace)} acciones`
+                    : `${getTodayOverviewCount(workspace)} ${getTodayOverviewCount(workspace) === 1 ? "acción" : "acciones"} entre todas tus secciones`
+                  : activeView === "nutrition"
+                  ? `${workspace.nutritionPlanItems.filter((item) => item.date === workspace.today).length} comidas planificadas hoy`
+                  : activeView === "locations"
+                  ? `${workspace.locationEntries.filter((item) => item.date === workspace.today).length} franjas planificadas hoy`
+                  : activeView === "ideal-day"
+                  ? "Objetivos para cada fecha"
+                  : activeView === "expectations"
+                  ? `${workspace.expectations.filter((item) => item.status === "pending").length} ${workspace.expectations.filter((item) => item.status === "pending").length === 1 ? "espera pendiente" : "esperas pendientes"}`
 
-          <div className="mx-auto grid max-w-[1500px] gap-5 p-4 md:p-6 lg:p-8">
-            <section key={activeView} className="view-enter min-w-0 space-y-6">
-              {activeView !== "capture" ? <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#20334d] pb-5">
-                <div>
-                  <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
-                    {activeView === "companion"
-                      ? `${companionConversationCount} ${companionConversationCount === 1 ? "conversación guardada" : "conversaciones guardadas"}`
-                      : activeView === "today"
-                      ? hasSearch
-                        ? `${filteredTasks.length} tareas coinciden en una agenda de ${getTodayOverviewCount(workspace)} acciones`
-                        : `${getTodayOverviewCount(workspace)} ${getTodayOverviewCount(workspace) === 1 ? "acción" : "acciones"} entre todas tus secciones`
-                      : activeView === "nutrition"
-                      ? `${workspace.nutritionPlanItems.filter((item) => item.date === workspace.today).length} comidas planificadas hoy`
-                      : activeView === "locations"
-                      ? `${workspace.locationEntries.filter((item) => item.date === workspace.today).length} franjas planificadas hoy`
-                      : activeView === "ideal-day"
-                      ? "Objetivos para cada fecha"
-                      : activeView === "expectations"
-                      ? `${workspace.expectations.filter((item) => item.status === "pending").length} ${workspace.expectations.filter((item) => item.status === "pending").length === 1 ? "espera pendiente" : "esperas pendientes"}`
-                      : activeView === "finances"
-                      ? `${workspace.financeEntries.length} ${workspace.financeEntries.length === 1 ? "movimiento" : "movimientos"} · ${workspace.financeDuePaymentCounts.pending} ${workspace.financeDuePaymentCounts.pending === 1 ? "pago pendiente" : "pagos pendientes"}`
-                      : activeView === "calendar"
-                      ? hasSearch
-                        ? `${calendarSearchCount} de ${workspace.subjectEvents.length} fechas clave`
-                        : `${workspace.subjectEvents.length} ${workspace.subjectEvents.length === 1 ? "fecha clave" : "fechas clave"}`
-                      : hasSearch
-                        ? `${filteredTasks.length} de ${visibleTasks.length} resultados`
-                        : `${visibleTasks.length} ${visibleTasks.length === 1 ? "tarea" : "tareas"}`}
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <h2 className="text-3xl font-black tracking-[-0.04em] text-[#f4f7fc] md:text-5xl">
-                      {heading}
-                    </h2>
-                    {activeView === "subjects" ? (
-                      <div className="grid grid-cols-2 rounded-xl border border-[#293f5e] bg-[#0d1a2a] p-1">
-                        {[
-                          { key: "folders" as const, label: "Carpetas" },
-                          { key: "horizon" as const, label: "Horizonte" },
-                        ].map((item) => (
-                          <button
-                            key={item.key}
-                            type="button"
-                            onClick={() => {
-                              setSubjectViewMode(item.key);
-                              if (item.key === "horizon") setSelectedSubjectId(null);
-                            }}
-                            aria-pressed={subjectViewMode === item.key}
-                            className={`h-9 px-3 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 ${
-                              subjectViewMode === item.key
-                                ? "rounded-lg bg-[#82afff] text-[#07111f] shadow-[0_5px_16px_rgba(130,175,255,0.18)]"
-                                : "rounded-lg text-[#aebbd0] hover:bg-[#16283f]"
-                            }`}
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
+                  : activeView === "calendar"
+                  ? hasSearch
+                    ? `${calendarSearchCount} de ${workspace.subjectEvents.length} fechas clave`
+                    : `${workspace.subjectEvents.length} ${workspace.subjectEvents.length === 1 ? "fecha clave" : "fechas clave"}`
+                  : hasSearch
+                    ? `${filteredTasks.length} de ${visibleTasks.length} resultados`
+                    : `${visibleTasks.length} ${visibleTasks.length === 1 ? "tarea" : "tareas"}`}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <h1 className="text-3xl font-black tracking-[-0.04em] text-[#f4f7fc] md:text-5xl">
+                  {heading}
+                </h1>
+                {activeView === "subjects" ? (
+                  <div className="grid grid-cols-2 rounded-xl border border-[#293f5e] bg-[#0d1a2a] p-1">
+                    {[
+                      { key: "folders" as const, label: "Carpetas" },
+                      { key: "horizon" as const, label: "Horizonte" },
+                    ].map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => {
+                          setSubjectViewMode(item.key);
+                          if (item.key === "horizon") setSelectedSubjectId(null);
+                        }}
+                        aria-pressed={subjectViewMode === item.key}
+                        className={`h-9 px-3 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 ${
+                          subjectViewMode === item.key
+                            ? "rounded-lg bg-[#82afff] text-[#07111f] shadow-[0_5px_16px_rgba(130,175,255,0.18)]"
+                            : "rounded-lg text-[#aebbd0] hover:bg-[#16283f]"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
                   </div>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[#8293ad]">{viewDescriptions[activeView]}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {hasSearch ? (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery("")}
-                      className="rounded-xl border border-[#314966] px-3 py-2.5 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#142338] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
-                    >
-                      Limpiar busqueda
-                    </button>
-                  ) : null}
-                  {activeView !== "companion" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "finances" && activeView !== "nutrition" && activeView !== "locations" && activeView !== "expectations" && activeView !== "ideal-day" ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsTaskModalOpen(true)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-[#82afff] bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] shadow-[0_10px_24px_rgba(130,175,255,0.18)] transition hover:-translate-y-0.5 hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40"
-                    >
-                      <span className="text-lg leading-none">+</span> Crear tarea
-                    </button>
-                  ) : null}
-                </div>
-              </div> : null}
+                ) : null}
+              </div>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#8293ad]">{viewDescriptions[activeView]}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {activeView === "subjects" ? (
+                <Link href={workspaceHref("subjects", selectedSubjectId ?? undefined)} className="inline-flex min-h-11 items-center rounded-xl border border-[#314966] px-3 text-sm font-bold text-[#c9dbf4] hover:bg-[#142338]">
+                  Volver a Planificación
+                </Link>
+              ) : null}
+              {hasSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="rounded-xl border border-[#314966] px-3 py-2.5 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#142338] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                >
+                  Limpiar busqueda
+                </button>
+              ) : null}
+              {activeView !== "companion" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "nutrition" && activeView !== "locations" && activeView !== "expectations" && activeView !== "ideal-day" ? (
+                <button
+                  type="button"
+                  onClick={() => setIsTaskModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[#82afff] bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] shadow-[0_10px_24px_rgba(130,175,255,0.18)] transition hover:-translate-y-0.5 hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40"
+                >
+                  <span className="text-lg leading-none">+</span> Crear tarea
+                </button>
+              ) : null}
+            </div>
+          </div>
 
-              {activeView === "capture" ? (
-                <CaptureView
-                  onAddTask={workspace.addTask}
-                  onOpenInbox={() => setActiveView("inbox")}
+          {activeView === "companion" ? (
+            <CompanionView
+              searchQuery={searchQuery}
+              onConversationCountChange={setCompanionConversationCount}
+            />
+          ) : activeView === "today" ? (
+            <TodayOverview
+              workspace={workspace}
+              searchQuery={searchQuery}
+              taskCount={filteredTaskItems.length}
+              taskContent={filteredTaskItems.length === 0 ? (
+                <TaskEmptyState
+                  label={hasSearch ? "No hay tareas que coincidan." : "No hay tareas fechadas para hoy."}
+                  hint={hasSearch ? "Las otras secciones de la agenda también respetan esta búsqueda." : "El resto de tu agenda sigue visible debajo."}
                 />
-              ) : activeView === "companion" ? (
-                <CompanionView
-                  searchQuery={searchQuery}
-                  onConversationCountChange={setCompanionConversationCount}
-                />
-              ) : activeView === "today" ? (
-                <TodayOverview
-                  workspace={workspace}
-                  searchQuery={searchQuery}
-                  taskCount={filteredTaskItems.length}
-                  taskContent={filteredTaskItems.length === 0 ? (
-                    <TaskEmptyState
-                      label={hasSearch ? "No hay tareas que coincidan." : "No hay tareas fechadas para hoy."}
-                      hint={hasSearch ? "Las otras secciones de la agenda también respetan esta búsqueda." : "El resto de tu agenda sigue visible debajo."}
-                    />
-                  ) : filteredTaskItems.map(({ task, depth }) => (
-                    <TaskRow
-                      key={task.id}
-                      task={task}
-                      subjects={workspace.subjects}
-                      phases={workspace.phases}
-                      depth={depth}
-                      today={workspace.today}
-                      onStatus={workspace.setTaskStatus}
-                      onOpen={setSelectedTaskId}
-                      accounts={workspace.financeAccounts}
-                      onApplySuggestion={applySuggestion}
-                      onOpenModule={setActiveView}
-                    />
-                  ))}
-                  onNavigate={setActiveView}
-                  onOpenSubject={(subjectId) => {
-                    setSelectedSubjectId(subjectId);
-                    setActiveView("subjects");
-                  }}
-                />
-              ) : activeView === "locations" ? (
-                <LocationsView workspace={workspace} searchQuery={searchQuery} />
-              ) : activeView === "ideal-day" ? (
-                <IdealDayView workspace={workspace} searchQuery={searchQuery} />
-              ) : activeView === "expectations" ? (
-                <ExpectationsView workspace={workspace} />
-              ) : activeView === "nutrition" ? (
-                <NutritionView workspace={workspace} searchQuery={searchQuery} />
-              ) : activeView === "finances" ? (
-                <FinanceView workspace={workspace} searchQuery={searchQuery} />
-              ) : activeView === "subjects" ? (
-                <div ref={subjectDetailRef} tabIndex={-1} className="scroll-mt-24 space-y-6 outline-none">
-                  {subjectViewMode === "horizon" && selectedSubject ? (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSubjectId(null)}
-                      className="rounded-xl border border-[#344d6c] px-4 py-2.5 text-sm font-bold text-[#afbed3] transition hover:bg-[#16283f] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
-                    >
-                      ← Volver al horizonte
-                    </button>
-                  ) : null}
-                  {subjectViewMode === "folders" || !selectedSubject ? (
-                    <div className="rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.14)] sm:p-5">
-                      <div className="mb-4">
-                        <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Explorador</p>
-                        <h3 className="mt-1 text-lg font-black text-[#e9f0fb]">{subjectViewMode === "folders" ? "Carpetas de asuntos" : "Asuntos por horizonte"}</h3>
-                      </div>
-                      {subjectViewMode === "folders" ? (
-                        <SubjectFolderBrowser
-                          subjects={workspace.subjects}
-                          tasks={workspace.tasks}
-                          selectedSubjectId={selectedSubjectId}
-                          onSelectSubject={(subjectId) => {
-                            setSelectedSubjectId(subjectId);
-                            setActiveView("subjects");
-                          }}
-                          onAddSubject={(parentSubjectId) => {
-                            setNewSubjectParentId(parentSubjectId);
-                            setIsSubjectModalOpen(true);
-                          }}
-                        />
-                      ) : (
-                        <SubjectHorizonBoard
-                          subjects={workspace.subjects}
-                          selectedSubjectId={selectedSubjectId}
-                          onSelectSubject={(subjectId) => {
-                            setSelectedSubjectId(subjectId);
-                            setActiveView("subjects");
-                          }}
-                          onSetSubjectHorizon={workspace.setSubjectHorizon}
-                        />
-                      )}
-                    </div>
-                  ) : null}
-
-                  {subjectViewMode === "folders" || selectedSubject ? (
-                    <div className="min-w-0 space-y-6">
-                      {selectedSubject ? (
-                        <>
-                          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#315177] bg-[linear-gradient(135deg,#10233a,#0d1a2a)] px-4 py-4 shadow-[0_14px_35px_rgba(0,0,0,0.14)] sm:px-5">
-                            <div className="min-w-0">
-                              <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">
-                                Detalle del asunto
-                              </p>
-                              <h3 className="mt-1 truncate text-xl font-black tracking-[-0.02em] text-[#f4f7fc]">
-                                {getSubjectPath(workspace.subjects, selectedSubject.id)}
-                              </h3>
-                              <p className="mt-2 text-sm text-[#aebbd0]">
-                                {getHorizonLabel(selectedSubject.horizon)} · Pendientes: {visibleTasks.filter(isActiveTask).length} · Completadas: {visibleTasks.filter((task) => task.status === "completed").length}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setIsSubjectEditModalOpen(true)}
-                                className="rounded-xl border border-[#3a5578] px-4 py-2.5 text-sm font-bold text-[#c1cee2] transition hover:bg-[#182a42] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
-                              >
-                                Editar asunto
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setIsTaskModalOpen(true)}
-                                className="rounded-xl border border-[#82afff] bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] transition hover:-translate-y-0.5 hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40"
-                              >
-                                Nueva tarea
-                              </button>
-                            </div>
-                          </div>
-                        </>
-                      ) : null}
-                      <section aria-label="Tareas del asunto" className="space-y-3">
-                        {selectedSubject ? <h4 className="text-base font-black text-[#e9f0fb]">Tareas del asunto</h4> : null}
-                        {filteredTaskItems.length === 0 ? (
-                          <TaskEmptyState label={emptyLabel} hint={hasSearch ? "Prueba con otro término o limpia la búsqueda." : selectedSubject ? "Crea una tarea para empezar a mover este asunto." : "Selecciona un asunto de la lista para ver su trabajo."} />
-                        ) : (
-                          filteredTaskItems.map(({ task, depth }) => (
-                            <TaskRow
-                              key={task.id}
-                              task={task}
-                              subjects={workspace.subjects}
-                              phases={workspace.phases}
-                              depth={depth}
-                              today={workspace.today}
-                              onStatus={workspace.setTaskStatus}
-                              onOpen={setSelectedTaskId}
-                              accounts={workspace.financeAccounts}
-                              onApplySuggestion={applySuggestion}
-                              onOpenModule={setActiveView}
-                            />
-                          ))
-                        )}
-                      </section>
-                      {selectedSubject ? (
-                        <>
-                          <SubjectDeliverableSection
-                            subject={selectedSubject}
-                            deliverables={workspace.deliverables}
-                            tasks={workspace.tasks}
-                            onAddDeliverable={workspace.addDeliverable}
-                            onUpdateDeliverable={workspace.updateDeliverable}
-                            onDeleteDeliverable={workspace.deleteDeliverable}
-                            onOpenTask={setSelectedTaskId}
-                            onCreateTask={(deliverableId) => {
-                              setNewTaskDeliverableId(deliverableId);
-                              setIsTaskModalOpen(true);
-                            }}
-                          />
-                          <SubjectEventSection
-                            subject={selectedSubject}
-                            events={workspace.subjectEvents}
-                            phases={workspace.phases}
-                            onAddEvent={workspace.addSubjectEvent}
-                            onPatchEvent={workspace.updateSubjectEvent}
-                            onDeleteEvent={workspace.deleteSubjectEvent}
-                          />
-                          <SubjectPhaseSection
-                            subject={selectedSubject}
-                            phases={workspace.phases}
-                            tasks={workspace.tasks}
-                            onAddPhase={workspace.addPhase}
-                            onPatchPhase={workspace.patchPhase}
-                            onMovePhase={workspace.movePhase}
-                            onDeletePhase={workspace.deletePhase}
-                          />
-                        </>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : activeView === "calendar" ? (
-                <CalendarView
-                  events={workspace.subjectEvents}
+              ) : filteredTaskItems.map(({ task, depth }) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
                   subjects={workspace.subjects}
                   phases={workspace.phases}
+                  depth={depth}
                   today={workspace.today}
-                  searchQuery={searchQuery}
-                  onAddEvent={workspace.addSubjectEvent}
-                  onPatchEvent={workspace.updateSubjectEvent}
-                  onDeleteEvent={workspace.deleteSubjectEvent}
-                  onOpenSubject={(subjectId) => {
-                    setSelectedSubjectId(subjectId);
-                    setActiveView("subjects");
-                  }}
+                  onStatus={workspace.planning.setTaskStatus}
+                  onOpen={setSelectedTaskId}
                 />
-              ) : (
-                <div className="space-y-3">
-                  {filteredTaskItems.length === 0 ? (
-                    <TaskEmptyState label={emptyLabel} hint={hasSearch ? "Prueba con otro término o limpia la búsqueda." : "Usa “Crear tarea” cuando quieras capturar algo nuevo."} />
+              ))}
+              onNavigate={navigateToView}
+              onOpenSubject={(subjectId) => navigateToView("subjects", subjectId)}
+            />
+          ) : activeView === "locations" ? (
+            <LocationsView workspace={workspace} searchQuery={searchQuery} />
+          ) : activeView === "ideal-day" ? (
+            <IdealDayView workspace={workspace} searchQuery={searchQuery} />
+          ) : activeView === "expectations" ? (
+            <ExpectationsView workspace={workspace} />
+          ) : activeView === "nutrition" ? (
+            <NutritionView workspace={workspace} searchQuery={searchQuery} />
+          ) : activeView === "subjects" ? (
+            <div ref={subjectDetailRef} tabIndex={-1} className="scroll-mt-24 space-y-6 outline-none">
+              {subjectViewMode === "horizon" && selectedSubject ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubjectId(null)}
+                  className="rounded-xl border border-[#344d6c] px-4 py-2.5 text-sm font-bold text-[#afbed3] transition hover:bg-[#16283f] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                >
+                  ← Volver al horizonte
+                </button>
+              ) : null}
+              {subjectViewMode === "folders" || !selectedSubject ? (
+                <div className="rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.14)] sm:p-5">
+                  <div className="mb-4">
+                    <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Explorador</p>
+                    <h3 className="mt-1 text-lg font-black text-[#e9f0fb]">{subjectViewMode === "folders" ? "Carpetas de asuntos" : "Asuntos por horizonte"}</h3>
+                  </div>
+                  {subjectViewMode === "folders" ? (
+                    <SubjectFolderBrowser
+                      subjects={workspace.subjects}
+                      tasks={workspace.tasks}
+                      selectedSubjectId={selectedSubjectId}
+                      onSelectSubject={(subjectId) => {
+                        setSelectedSubjectId(subjectId);
+                      }}
+                      onAddSubject={(parentSubjectId) => {
+                        setNewSubjectParentId(parentSubjectId);
+                        setIsSubjectModalOpen(true);
+                      }}
+                    />
                   ) : (
-                    filteredTaskItems.map(({ task, depth }) => (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        subjects={workspace.subjects}
-                        phases={workspace.phases}
-                        depth={depth}
-                        today={workspace.today}
-                        onStatus={workspace.setTaskStatus}
-                        onOpen={setSelectedTaskId}
-                        accounts={workspace.financeAccounts}
-                        onApplySuggestion={applySuggestion}
-                        onOpenModule={setActiveView}
-                      />
-                    ))
+                    <SubjectHorizonBoard
+                      subjects={workspace.subjects}
+                      selectedSubjectId={selectedSubjectId}
+                      onSelectSubject={(subjectId) => {
+                        setSelectedSubjectId(subjectId);
+                      }}
+                      onSetSubjectHorizon={workspace.setSubjectHorizon}
+                    />
                   )}
                 </div>
+              ) : null}
+
+              {subjectViewMode === "folders" || selectedSubject ? (
+                <div className="min-w-0 space-y-6">
+                  {selectedSubject ? (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#315177] bg-[linear-gradient(135deg,#10233a,#0d1a2a)] px-4 py-4 shadow-[0_14px_35px_rgba(0,0,0,0.14)] sm:px-5">
+                        <div className="min-w-0">
+                          <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">
+                            Detalle del asunto
+                          </p>
+                          <h3 className="mt-1 truncate text-xl font-black tracking-[-0.02em] text-[#f4f7fc]">
+                            {getSubjectPath(workspace.subjects, selectedSubject.id)}
+                          </h3>
+                          <p className="mt-2 text-sm text-[#aebbd0]">
+                            {getHorizonLabel(selectedSubject.horizon)} · Pendientes: {visibleTasks.filter(isActiveTask).length} · Completadas: {visibleTasks.filter((task) => task.status === "completed").length}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsSubjectEditModalOpen(true)}
+                            className="rounded-xl border border-[#3a5578] px-4 py-2.5 text-sm font-bold text-[#c1cee2] transition hover:bg-[#182a42] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                          >
+                            Editar asunto
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsTaskModalOpen(true)}
+                            className="rounded-xl border border-[#82afff] bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] transition hover:-translate-y-0.5 hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40"
+                          >
+                            Nueva tarea
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                  <section aria-label="Tareas del asunto" className="space-y-3">
+                    {selectedSubject ? <h4 className="text-base font-black text-[#e9f0fb]">Tareas del asunto</h4> : null}
+                    {filteredTaskItems.length === 0 ? (
+                      <TaskEmptyState label={emptyLabel} hint={hasSearch ? "Prueba con otro término o limpia la búsqueda." : selectedSubject ? "Crea una tarea para empezar a mover este asunto." : "Selecciona un asunto de la lista para ver su trabajo."} />
+                    ) : (
+                      filteredTaskItems.map(({ task, depth }) => (
+                        <TaskRow
+                          key={task.id}
+                          task={task}
+                          subjects={workspace.subjects}
+                          phases={workspace.phases}
+                          depth={depth}
+                          today={workspace.today}
+                          onStatus={workspace.planning.setTaskStatus}
+                          onOpen={setSelectedTaskId}
+                        />
+                      ))
+                    )}
+                  </section>
+                  {selectedSubject ? (
+                    <>
+                      <SubjectDeliverableSection
+                        subject={selectedSubject}
+                        deliverables={workspace.deliverables}
+                        tasks={workspace.tasks}
+                        onAddDeliverable={workspace.addDeliverable}
+                        onUpdateDeliverable={workspace.updateDeliverable}
+                        onDeleteDeliverable={workspace.deleteDeliverable}
+                        onOpenTask={setSelectedTaskId}
+                        onCreateTask={(deliverableId) => {
+                          setNewTaskDeliverableId(deliverableId);
+                          setIsTaskModalOpen(true);
+                        }}
+                      />
+                      <SubjectEventSection
+                        subject={selectedSubject}
+                        events={workspace.subjectEvents}
+                        phases={workspace.phases}
+                        onAddEvent={workspace.addSubjectEvent}
+                        onPatchEvent={workspace.updateSubjectEvent}
+                        onDeleteEvent={workspace.deleteSubjectEvent}
+                      />
+                      <SubjectPhaseSection
+                        subject={selectedSubject}
+                        phases={workspace.phases}
+                        tasks={workspace.tasks}
+                        onAddPhase={workspace.addPhase}
+                        onPatchPhase={workspace.patchPhase}
+                        onMovePhase={workspace.movePhase}
+                        onDeletePhase={workspace.deletePhase}
+                      />
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : activeView === "calendar" ? (
+            <CalendarView
+              events={workspace.subjectEvents}
+              subjects={workspace.subjects}
+              phases={workspace.phases}
+              today={workspace.today}
+              searchQuery={searchQuery}
+              onAddEvent={workspace.addSubjectEvent}
+              onPatchEvent={workspace.updateSubjectEvent}
+              onDeleteEvent={workspace.deleteSubjectEvent}
+              onOpenSubject={(subjectId) => navigateToView("subjects", subjectId)}
+            />
+          ) : (
+            <div className="space-y-3">
+              {filteredTaskItems.length === 0 ? (
+                <TaskEmptyState label={emptyLabel} hint={hasSearch ? "Prueba con otro término o limpia la búsqueda." : "Usa “Crear tarea” cuando quieras capturar algo nuevo."} />
+              ) : (
+                filteredTaskItems.map(({ task, depth }) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    subjects={workspace.subjects}
+                    phases={workspace.phases}
+                    depth={depth}
+                    today={workspace.today}
+                    onStatus={workspace.planning.setTaskStatus}
+                    onOpen={setSelectedTaskId}
+                  />
+                ))
               )}
-            </section>
-          </div>
-        </div>
+            </div>
+          )}
+        </section>
+      </div>
       </div>
       <TaskCreateModal
         key={`create-task-${defaultTaskSubjectIds.join("|")}-${newTaskDeliverableId ?? "none"}`}
@@ -3516,7 +2389,7 @@ export default function TaskManager() {
         deliverables={workspace.deliverables}
         phases={workspace.phases}
         tasks={workspace.tasks}
-        onAddTask={workspace.addTask}
+        onAddTask={workspace.planning.addTask}
         onClose={() => {
           setIsTaskModalOpen(false);
           setNewTaskDeliverableId(null);
@@ -3530,12 +2403,13 @@ export default function TaskManager() {
         deliverables={workspace.deliverables}
         phases={workspace.phases}
         today={workspace.today}
-        onPatch={workspace.patchTask}
-        onStatus={workspace.setTaskStatus}
-        onPriority={workspace.setTaskPriority}
-        onDelete={workspace.deleteTask}
+        onPatch={workspace.planning.patchTask}
+        onAssignSubjects={workspace.planning.assignTaskSubjects}
+        onStatus={workspace.planning.setTaskStatus}
+        onPriority={workspace.planning.setTaskPriority}
+        onDelete={workspace.planning.deleteTask}
         onClose={() => setSelectedTaskId(null)}
-        getAvailableParentTasksForTask={workspace.getAvailableParentTasksForTask}
+        getAvailableParentTasksForTask={workspace.planning.getAvailableParentTasksForTask}
       />
       <SubjectCreateModal
         isOpen={isSubjectModalOpen}

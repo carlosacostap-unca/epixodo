@@ -188,6 +188,7 @@ function toTask(value: unknown): Task | null {
         : null,
     priority: legacy.priority as Task["priority"],
     aiSuggestion: normalizeTaskAiSuggestion(legacy.aiSuggestion),
+    ...(legacy.inboxReviewed === true ? { inboxReviewed: true } as const : {}),
     createdAt: legacy.createdAt,
     updatedAt: legacy.updatedAt,
     completedAt:

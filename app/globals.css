@@ -144,8 +144,6 @@ textarea:disabled {
   }
 }
 
-@media (max-width: 1023px) {
-  body:has(.mobile-navigation[open]) {
-    overflow: hidden;
-  }
+body:has(.module-switcher[open]) {
+  overflow: hidden;
 }

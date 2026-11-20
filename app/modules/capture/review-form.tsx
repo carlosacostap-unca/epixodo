@@ -1,26 +1,16 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
-import { minorAmountToInput, parseMinorAmount, type FinanceAccount, type FinanceDuePaymentDraft, type FinanceEntryDraft } from "../lib/finance";
-import type { LocationEntryDraft } from "../lib/locations";
-import { mealTypes, milliValueToInput, parseMilliValue, type NutritionHydrationDraft, type NutritionIntakeDraft } from "../lib/nutrition";
-import { taskPriorities, type ExpectationDraft, type Subject, type SubjectEventDraft, type TaskAiSuggestion, type TaskPriority } from "../lib/tasks";
+import { minorAmountToInput, parseMinorAmount, type FinanceAccount } from "../../lib/finance";
+import type { CaptureAction } from "./actions";
+import { mealTypes, milliValueToInput, parseMilliValue, type NutritionIntakeDraft } from "../../lib/nutrition";
+import { taskPriorities, type Subject, type TaskAiSuggestion, type TaskPriority } from "../../lib/tasks";
 
-export type InboxSuggestionAction =
-  | { type: "task"; draft: { title: string; notes: string; priority: TaskPriority; hacerEl: string | null; venceEl: string | null; subjectIds: string[] } }
-  | { type: "finance_entry"; draft: FinanceEntryDraft }
-  | { type: "finance_due_payment"; draft: FinanceDuePaymentDraft }
-  | { type: "subject_event"; subjectId: string; draft: SubjectEventDraft }
-  | { type: "location"; draft: LocationEntryDraft }
-  | { type: "nutrition_hydration"; draft: NutritionHydrationDraft }
-  | { type: "nutrition_intake"; draft: NutritionIntakeDraft }
-  | { type: "expectation"; draft: ExpectationDraft };
-
-const fieldClass = "h-10 w-full rounded-lg border border-[#36536f] bg-[#081722] px-3 text-sm font-semibold text-[#e7f1f7] outline-none transition placeholder:text-[#61768a] focus:border-[#7fd8d0] focus:ring-2 focus:ring-[#7fd8d0]/15";
-const labelClass = "grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#7794a0]";
+const fieldClass = "h-10 w-full rounded-lg border border-[#574d41] bg-[#191815] px-3 text-sm font-semibold text-[#f5eee3] outline-none transition placeholder:text-[#a59a89] focus:border-[#ffcb7e] focus:ring-2 focus:ring-[#ffcb7e]/15";
+const labelClass = "grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#c0b5a7]";
 
 const labels: Record<TaskAiSuggestion["type"], { module: string; title: string; action: string }> = {
-  task: { module: "Tareas", title: "Tarea sugerida", action: "Convertir en tarea" },
+  task: { module: "Planificación", title: "Tarea sugerida", action: "Convertir en tarea" },
   finance_entry: { module: "Finanzas", title: "Movimiento sugerido", action: "Registrar movimiento" },
   finance_due_payment: { module: "Finanzas", title: "Pago pendiente sugerido", action: "Crear pago pendiente" },
   subject_event: { module: "Calendario", title: "Evento sugerido", action: "Crear evento" },
@@ -30,12 +20,18 @@ const labels: Record<TaskAiSuggestion["type"], { module: string; title: string; 
   expectation: { module: "Esperas", title: "Espera sugerida", action: "Agregar a Esperas" },
 };
 
-export default function InboxAiSuggestion({ suggestion, accounts, subjects, today, onApply, onOpenModule }: {
+export function captureDestination(suggestion: TaskAiSuggestion | null) {
+  return labels[suggestion?.type ?? "task"].module;
+}
+
+export default function ReviewForm({ suggestion, accounts, subjects, today, applyError, isSuggested, onApply, onOpenModule }: {
   suggestion: TaskAiSuggestion;
   accounts: FinanceAccount[];
   subjects: Subject[];
   today: string;
-  onApply: (action: InboxSuggestionAction) => void;
+  applyError?: string;
+  isSuggested: boolean;
+  onApply: (action: CaptureAction) => void;
   onOpenModule: (module: "finances" | "subjects") => void;
 }) {
   const compatibleAccounts = useMemo(() => "currency" in suggestion ? accounts.filter((account) => account.currency === suggestion.currency) : [], [accounts, suggestion]);
@@ -47,6 +43,7 @@ export default function InboxAiSuggestion({ suggestion, accounts, subjects, toda
   const [fields, setFields] = useState<Record<string, string>>(() => suggestionFields(suggestion, today));
   const [error, setError] = useState("");
   const meta = labels[suggestion.type];
+  const formName = isSuggested ? meta.title : "Tarea de Planificación";
   const set = (key: string, value: string) => setFields((current) => ({ ...current, [key]: value }));
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -62,7 +59,7 @@ export default function InboxAiSuggestion({ suggestion, accounts, subjects, toda
         return;
       case "finance_entry":
         if (!accountId || !amountMinor || amountMinor <= 0 || !required("date", "description")) return setError(`Elegí una cuenta en ${suggestion.currency} y revisá fecha, descripción e importe.`);
-        onApply({ type: "finance_entry", draft: { accountId, kind: fields.kind as "income" | "expense", date: fields.date, description: fields.description.trim(), amountMinor, category: fields.category.trim() } });
+        onApply({ type: "finance_entry", currency: suggestion.currency, draft: { accountId, kind: fields.kind as "income" | "expense", date: fields.date, description: fields.description.trim(), amountMinor, category: fields.category.trim() } });
         return;
       case "finance_due_payment":
         if (!amountMinor || amountMinor <= 0 || !required("dueDate", "description")) return setError("Revisá vencimiento, descripción e importe.");
@@ -101,28 +98,32 @@ export default function InboxAiSuggestion({ suggestion, accounts, subjects, toda
 
   const usesAccount = suggestion.type === "finance_entry" || suggestion.type === "finance_due_payment";
   const requiresAccount = suggestion.type === "finance_entry";
+  const accountUnavailable = !!accountId && !compatibleAccounts.some(({ id }) => id === accountId);
   const needsSubject = suggestion.type === "subject_event";
 
   return (
-    <form onSubmit={submit} className="relative overflow-hidden rounded-2xl border border-[#35647a] bg-[linear-gradient(135deg,#0d2934,#0d202d_58%,#101d2b)] p-4 shadow-[inset_0_1px_0_rgba(127,216,208,0.08)] sm:col-start-3" aria-label={meta.title}>
-      <div aria-hidden="true" className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-[#7fd8d0]/[0.06] blur-2xl" />
-      <div className="relative flex flex-wrap items-start justify-between gap-3">
-        <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-[#3f807e] bg-[#123b3d] px-2.5 py-1 font-mono text-[10px] font-black uppercase tracking-[0.12em] text-[#91e5dc]">Sugerencia de IA</span><span className="rounded-full border border-[#36536f] px-2.5 py-1 font-mono text-[10px] font-black uppercase tracking-[0.12em] text-[#9bb8ca]">{meta.module}</span></div><p className="mt-3 text-base font-black text-[#f1fbfa]">{meta.title}</p></div>
-        <p className="max-w-xs text-right text-xs leading-5 text-[#76919e]">Los campos son editables. Nada se registra hasta que confirmes.</p>
-      </div>
+    <form onSubmit={submit} aria-label={formName}>
+      <h3 className="font-serif text-2xl tracking-tight text-[#f5eee3]">{formName}</h3>
+      <p className="mt-1 text-sm text-[#c0b5a7]">Destino · <strong className="font-medium text-[#ffd08a]">{meta.module}</strong></p>
 
       {requiresAccount && compatibleAccounts.length === 0 ? <MissingDependency title={`Falta una cuenta en ${suggestion.currency}`} action="Abrir Finanzas" onClick={() => onOpenModule("finances")} /> : null}
       {needsSubject && subjects.length === 0 ? <MissingDependency title="Falta crear un asunto" action="Abrir Asuntos" onClick={() => onOpenModule("subjects")} /> : null}
 
       {(!requiresAccount || compatibleAccounts.length > 0) && (!needsSubject || subjects.length > 0) ? (
-        <div className="relative mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {usesAccount ? <Select label={requiresAccount ? "Cuenta" : "Cuenta (opcional)"} value={accountId} onChange={setAccountId}>{!requiresAccount ? <option value="">Sin cuenta definida</option> : null}{compatibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</Select> : null}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {usesAccount ? (
+            <Select label={requiresAccount ? "Cuenta" : "Cuenta (opcional)"} value={accountId} onChange={setAccountId}>
+              {accountUnavailable ? <option value={accountId} disabled>Cuenta anterior no disponible</option> : null}
+              {!requiresAccount ? <option value="">Sin cuenta definida</option> : null}
+              {compatibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+            </Select>
+          ) : null}
           {(suggestion.type === "task" || suggestion.type === "subject_event") ? <Select label="Asunto" value={subjectId} onChange={setSubjectId}><option value="">Sin asunto</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</Select> : null}
           <SuggestionFields suggestion={suggestion} fields={fields} set={set} />
-          <button type="submit" className="self-end rounded-lg bg-[#7fd8d0] px-4 py-2.5 text-sm font-black text-[#062021] shadow-[0_8px_22px_rgba(127,216,208,0.14)] transition hover:-translate-y-0.5 hover:bg-[#a6eee7] focus:outline-none focus:ring-2 focus:ring-[#7fd8d0]/35">{meta.action}</button>
+          <button type="submit" className="min-h-11 justify-self-start rounded-lg bg-[#ffcb7e] px-4 py-2.5 text-sm font-bold text-[#21180d] transition hover:bg-[#ffd08a] sm:col-span-2">{meta.action}</button>
         </div>
       ) : null}
-      {error ? <p role="alert" className="relative mt-3 rounded-lg border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm font-semibold text-[#ffafa5]">{error}</p> : null}
+      {error || applyError ? <p role="alert" className="mt-3 rounded-lg border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm font-semibold text-[#ffafa5]">{error || applyError}</p> : null}
     </form>
   );
 }
@@ -130,14 +131,14 @@ export default function InboxAiSuggestion({ suggestion, accounts, subjects, toda
 function SuggestionFields({ suggestion, fields, set }: { suggestion: TaskAiSuggestion; fields: Record<string, string>; set: (key: string, value: string) => void }) {
   const input = (label: string, key: string, type = "text", span = "") => <label className={`${labelClass} ${span}`}>{label}<input type={type} value={fields[key] ?? ""} onChange={(event) => set(key, event.target.value)} className={fieldClass} /></label>;
   switch (suggestion.type) {
-    case "task": return <>{input("Título", "title", "text", "md:col-span-2")}<Select label="Prioridad" value={fields.priority} onChange={(value) => set("priority", value)}>{taskPriorities.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select>{input("Hacer el", "hacerEl", "date")}{input("Vence el", "venceEl", "date")}{input("Notas", "notes", "text", "md:col-span-2 xl:col-span-3")}</>;
-    case "finance_entry": return <><Select label="Tipo" value={fields.kind} onChange={(value) => set("kind", value)}><option value="expense">Gasto</option><option value="income">Ingreso</option></Select>{input("Fecha", "date", "date")}{input(`Importe (${suggestion.currency})`, "amount")}{input("Categoría", "category")}{input("Descripción", "description", "text", "md:col-span-2 xl:col-span-3")}</>;
-    case "finance_due_payment": return <>{input("Vencimiento", "dueDate", "date")}{input(`Importe (${suggestion.currency})`, "amount")}{input("Categoría", "category")}{input("Descripción", "description", "text", "md:col-span-2 xl:col-span-3")}</>;
-    case "subject_event": return <><Select label="Tipo" value={fields.kind} onChange={(value) => set("kind", value)}><option value="deadline">Fecha límite</option><option value="milestone">Hito</option></Select>{input("Fecha", "date", "date")}{input("Descripción", "description", "text", "md:col-span-2 xl:col-span-3")}</>;
-    case "location": return <>{input("Fecha", "date", "date")}{input("Desde", "startTime", "time")}{input("Hasta", "endTime", "time")}{input("Lugar previsto", "plannedLocation")}{input("Lugar real", "actualLocation")}{input("Notas", "notes", "text", "md:col-span-2")}</>;
+    case "task": return <>{input("Título", "title", "text", "sm:col-span-2")}<Select label="Prioridad" value={fields.priority} onChange={(value) => set("priority", value)}>{taskPriorities.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select>{input("Hacer el", "hacerEl", "date")}{input("Vence el", "venceEl", "date")}<label className={labelClass + " sm:col-span-2"}>Notas<textarea value={fields.notes} onChange={(event) => set("notes", event.target.value)} className={fieldClass + " min-h-20 py-2"} /></label></>;
+    case "finance_entry": return <><Select label="Tipo" value={fields.kind} onChange={(value) => set("kind", value)}><option value="expense">Gasto</option><option value="income">Ingreso</option></Select>{input("Fecha", "date", "date")}{input(`Importe (${suggestion.currency})`, "amount")}{input("Categoría", "category")}{input("Descripción", "description", "text", "sm:col-span-2")}</>;
+    case "finance_due_payment": return <>{input("Vencimiento", "dueDate", "date")}{input(`Importe (${suggestion.currency})`, "amount")}{input("Categoría", "category")}{input("Descripción", "description", "text", "sm:col-span-2")}</>;
+    case "subject_event": return <><Select label="Tipo" value={fields.kind} onChange={(value) => set("kind", value)}><option value="deadline">Fecha límite</option><option value="milestone">Hito</option></Select>{input("Fecha", "date", "date")}{input("Descripción", "description", "text", "sm:col-span-2")}</>;
+    case "location": return <>{input("Fecha", "date", "date")}{input("Desde", "startTime", "time")}{input("Hasta", "endTime", "time")}{input("Lugar previsto", "plannedLocation")}{input("Lugar real", "actualLocation")}{input("Notas", "notes", "text", "sm:col-span-2")}</>;
     case "nutrition_hydration": return <>{input("Fecha", "date", "date")}{input("Cantidad (ml)", "amountMl")}</>;
-    case "nutrition_intake": return <>{input("Fecha", "date", "date")}<Select label="Comida" value={fields.mealType} onChange={(value) => set("mealType", value)}>{mealTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select>{input("Descripción", "description", "text", "md:col-span-2")}{input("Cantidad", "quantity")}{input("Unidad", "unitLabel")}{input("Energía (kcal)", "energyKcal")}{input("Proteínas (g)", "proteinGrams")}{input("Carbohidratos (g)", "carbsGrams")}{input("Grasas (g)", "fatGrams")}{input("Fibra (g)", "fiberGrams")}</>;
-    case "expectation": return <>{input("Fecha esperada", "expectedDate", "date")}{input("Cantidad", "quantity")}{input("Origen", "source")}{input("Qué esperás", "title", "text", "md:col-span-2")}{input("Notas", "notes", "text", "md:col-span-2")}</>;
+    case "nutrition_intake": return <>{input("Fecha", "date", "date")}<Select label="Comida" value={fields.mealType} onChange={(value) => set("mealType", value)}>{mealTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select>{input("Descripción", "description", "text", "sm:col-span-2")}{input("Cantidad", "quantity")}{input("Unidad", "unitLabel")}{input("Energía (kcal)", "energyKcal")}{input("Proteínas (g)", "proteinGrams")}{input("Carbohidratos (g)", "carbsGrams")}{input("Grasas (g)", "fatGrams")}{input("Fibra (g)", "fiberGrams")}</>;
+    case "expectation": return <>{input("Fecha esperada", "expectedDate", "date")}{input("Cantidad", "quantity")}{input("Origen", "source")}{input("Qué esperás", "title", "text", "sm:col-span-2")}{input("Notas", "notes", "text", "sm:col-span-2")}</>;
   }
 }
 

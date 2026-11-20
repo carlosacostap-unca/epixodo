@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CaptureResult } from "../lib/ai-capture";
-import type { TaskDraft } from "../lib/tasks";
+import Link from "next/link";
+import type { CaptureResult } from "../../lib/ai-capture";
+import { workspaceHref } from "../../lib/module-navigation";
+import styles from "./capture.module.css";
 
 type CaptureState = "idle" | "starting" | "recording" | "processing" | "saving" | "saved";
 
@@ -41,7 +43,7 @@ function RecordingWaveform({ stream }: { stream: MediaStream }) {
         levels.shift();
         levels.push(Math.min(1, Math.sqrt(energy / samples.length) * 4));
         pen.clearRect(0, 0, canvas.width, canvas.height);
-        pen.fillStyle = "#82afff";
+        pen.fillStyle = "#ffcb7e";
         levels.forEach((level, index) => {
           const height = Math.max(4, level * 76);
           pen.beginPath();
@@ -64,9 +66,8 @@ function RecordingWaveform({ stream }: { stream: MediaStream }) {
   return <canvas ref={canvasRef} width={288} height={80} role="img" aria-label="Nivel de voz del micrófono en tiempo real" className="h-20 w-full max-w-72" />;
 }
 
-export default function CaptureView({ onAddTask, onOpenInbox }: {
-  onAddTask: (draft: TaskDraft) => void;
-  onOpenInbox: () => void;
+export default function CaptureComposer({ onCapture }: {
+  onCapture: (capture: CaptureResult) => void;
 }) {
   const [mode, setMode] = useState<"text" | "voice">("text");
   const [text, setText] = useState("");
@@ -158,12 +159,7 @@ export default function CaptureView({ onAddTask, onOpenInbox }: {
         result = (await response.json()) as CaptureResult;
       }
       if (!mountedRef.current) return;
-      onAddTask({
-        title: result.title,
-        notes: result.notes.trim() ? `${result.notes.trim()}\n\n— Captura original —\n${result.sourceText.trim()}` : result.sourceText.trim(),
-        status: "pending", subjectIds: [], phaseId: null, parentTaskId: null,
-        hacerEl: null, venceEl: null, priority: "normal", aiSuggestion: result.suggestion,
-      });
+      onCapture(result);
       setText("");
       setPreparedCapture(null);
       setHasTranscript(false);
@@ -250,10 +246,10 @@ export default function CaptureView({ onAddTask, onOpenInbox }: {
   const showEditor = mode === "text" || hasTranscript;
 
   return (
-    <section aria-label="Nueva entrada" className="mx-auto w-full max-w-2xl">
-      <div role="group" aria-label="Cómo ingresar tu entrada" className="grid grid-cols-2 gap-1 rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-1.5">
+    <section aria-label="Nueva entrada" className="w-full">
+      <div role="group" aria-label="Cómo ingresar tu entrada" className="grid grid-cols-2 gap-1 rounded-2xl border border-[#423c35] bg-[#191815] p-1.5">
         {(["text", "voice"] as const).map((item) => (
-          <button key={item} type="button" aria-pressed={mode === item} disabled={isBusy} onClick={() => { setMode(item); setError(""); if (state === "saved") setState("idle"); }} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${mode === item ? "bg-[#82afff] text-[#07111d]" : "text-[#9fb0c9] hover:bg-[#192d46]"}`}>
+          <button key={item} type="button" aria-pressed={mode === item} disabled={isBusy} onClick={() => { setMode(item); setError(""); if (state === "saved") setState("idle"); }} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${mode === item ? "bg-[#ffcb7e] text-[#21180d]" : "text-[#c0b5a7] hover:bg-[#2b2822]"}`}>
             {item === "text" ? <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m16 3 5 5-12 12H4v-5L16 3ZM13 6l5 5" /></svg> : <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="8" y="3" width="8" height="13" rx="4" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></svg>}
             {item === "text" ? "Texto" : "Voz"}
           </button>
@@ -268,27 +264,27 @@ export default function CaptureView({ onAddTask, onOpenInbox }: {
               setState("processing");
               recorderRef.current.stop();
             } else { void startRecording(); }
-          }} aria-label={state === "recording" ? "Detener grabación" : "Grabar"} className={`flex h-24 w-24 items-center justify-center !rounded-full border transition focus-visible:outline-offset-8 ${state === "recording" ? "border-[#ff8d81] bg-[#47201f] text-[#ffafa5]" : "border-[#4c75a8] bg-[#17345a] text-[#a8c7ff] hover:bg-[#1e416d]"}`}>
-            {state === "processing" || state === "starting" ? <span className="h-8 w-8 motion-safe:animate-spin rounded-full border-4 border-[#82afff]/25 border-t-[#82afff]" /> : state === "recording" ? <span className="h-7 w-7 rounded-md bg-current" /> : <svg aria-hidden="true" viewBox="0 0 24 24" className="h-10 w-10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="8" y="3" width="8" height="13" rx="4" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></svg>}
+          }} aria-label={state === "recording" ? "Detener grabación" : "Grabar"} className={`flex h-24 w-24 items-center justify-center !rounded-full border transition focus-visible:outline-offset-8 ${state === "recording" ? "border-[#ff8d81] bg-[#47201f] text-[#ffafa5]" : "border-[#8b693d] bg-[#34281b] text-[#ffd08a] hover:bg-[#493521]"}`}>
+            {state === "processing" || state === "starting" ? <span className="h-8 w-8 motion-safe:animate-spin rounded-full border-4 border-[#ffcb7e]/25 border-t-[#ffcb7e]" /> : state === "recording" ? <span className="h-7 w-7 rounded-md bg-current" /> : <svg aria-hidden="true" viewBox="0 0 24 24" className="h-10 w-10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="8" y="3" width="8" height="13" rx="4" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" /></svg>}
           </button>
           <div className="text-center">
-            <p role="status" className="text-sm font-semibold text-[#c8d5e8]">{state === "processing" ? "Transcribiendo…" : state === "starting" ? "Abriendo micrófono…" : state === "recording" ? "Detener grabación" : "Grabar"}</p>
-            {state === "recording" ? <p className="mt-2 font-mono text-sm tabular-nums text-[#8293ad]">{formatDuration(seconds)}</p> : null}
+            <p role="status" className="text-sm font-semibold text-[#e3d9cd]">{state === "processing" ? "Transcribiendo…" : state === "starting" ? "Abriendo micrófono…" : state === "recording" ? "Detener grabación" : "Grabar"}</p>
+            {state === "recording" ? <p className="mt-2 font-mono text-sm tabular-nums text-[#b3a796]">{formatDuration(seconds)}</p> : null}
           </div>
         </div>
       ) : null}
 
       {showEditor ? (
-        <div className="mt-5">
-          <label htmlFor="capture-text" className={mode === "voice" ? "mb-3 block text-sm font-semibold text-[#c8d5e8]" : "sr-only"}>{mode === "voice" ? "Tu transcripción · podés editarla" : "Escribí tu entrada"}</label>
-          <textarea ref={editorRef} id="capture-text" value={text} disabled={isBusy} maxLength={12_000} onChange={(event) => { setText(event.target.value); setError(""); if (state === "saved") setState("idle"); }} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveEntry(); } }} placeholder="¿Qué querés guardar?" className="min-h-64 w-full resize-y rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-5 text-base leading-7 text-[#edf4ff] outline-none transition placeholder:text-[#7185a3] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15 sm:min-h-72" />
+        <div className="mt-4">
+          <label htmlFor="capture-text" className={mode === "voice" ? "mb-3 block text-sm font-semibold text-[#e3d9cd]" : "sr-only"}>{mode === "voice" ? "Tu transcripción · podés editarla" : "Escribí tu entrada"}</label>
+          <textarea ref={editorRef} id="capture-text" value={text} disabled={isBusy} maxLength={12_000} onChange={(event) => { setText(event.target.value); setError(""); if (state === "saved") setState("idle"); }} onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void saveEntry(); } }} placeholder="¿Qué querés guardar?" className={styles.paper + " min-h-56 w-full resize-y rounded-lg border border-[#423c35] bg-[#191815] p-5 pl-10 text-base leading-7 text-[#f5eee3] outline-none transition placeholder:text-[#a59a89] focus:border-[#ffcb7e] focus:ring-2 focus:ring-[#ffcb7e]/15 sm:min-h-72"} />
           <div className="mt-4 flex gap-3">
             {mode === "voice" && hasTranscript ? (
-              <button type="button" disabled={isBusy} onClick={cancelVoiceEntry} className="min-h-12 rounded-xl border border-[#293f5e] px-5 py-3 text-sm font-bold text-[#c8d5e8] transition hover:bg-[#192d46]">
+              <button type="button" disabled={isBusy} onClick={cancelVoiceEntry} className="min-h-12 rounded-xl border border-[#423c35] px-5 py-3 text-sm font-bold text-[#e3d9cd] transition hover:bg-[#2b2822]">
                 Cancelar
               </button>
             ) : null}
-            <button type="button" disabled={!text.trim() || isBusy} onClick={() => void saveEntry()} className="flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-[#82afff] px-5 py-3 text-sm font-bold text-[#07111d] transition hover:bg-[#a8c7ff] disabled:opacity-45">
+            <button type="button" disabled={!text.trim() || isBusy} onClick={() => void saveEntry()} className="flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-lg bg-[#ffcb7e] px-5 py-3 text-sm font-bold text-[#21180d] transition hover:bg-[#ffd08a] disabled:opacity-45">
               {state === "saving" ? "Guardando…" : "Guardar entrada"}
             </button>
           </div>
@@ -296,7 +292,7 @@ export default function CaptureView({ onAddTask, onOpenInbox }: {
       ) : null}
 
       {error ? <div role="alert" className="mt-4 rounded-xl border border-[#7a3d32] bg-[#2e1716] p-4 text-sm text-[#ffafa5]"><p>{error}</p>{retryAudio && retryAudio.size > 0 && retryAudio.size <= 15 * 1024 * 1024 ? <button type="button" disabled={isBusy} className="mt-3 min-h-11 underline underline-offset-4" onClick={() => { if (!busyRef.current) { busyRef.current = true; void processAudio(retryAudio); } }}>Reintentar transcripción</button> : null}</div> : null}
-      {state === "saved" ? <div role="status" className="mt-5 flex flex-wrap items-center justify-between gap-2 text-sm"><p className="text-[#63d3a5]">Entrada guardada en Bandeja</p><button type="button" onClick={onOpenInbox} className="min-h-11 font-semibold text-[#a8c7ff] underline underline-offset-4">Ver Bandeja</button></div> : null}
+      {state === "saved" ? <div role="status" className="mt-5 flex flex-wrap items-center justify-between gap-2 text-sm"><p className="text-[#63d3a5]">Entrada guardada en Bandeja</p><Link href={workspaceHref("inbox")} className="inline-flex min-h-11 items-center font-semibold text-[#ffd08a] underline underline-offset-4">Ver Bandeja</Link></div> : null}
     </section>
   );
 }

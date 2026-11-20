@@ -187,6 +187,7 @@ export type Task = {
   venceEl: DateOnly | null;
   priority: TaskPriority;
   aiSuggestion: TaskAiSuggestion | null;
+  inboxReviewed?: true;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -987,16 +988,26 @@ export function getTodayTasks(tasks: Task[], today = getTodayDateOnly()): Task[]
   );
 }
 
+export function isInboxTask(task: Task): boolean {
+  return isActiveTask(task) && !task.inboxReviewed && (
+    !!task.aiSuggestion ||
+    (task.subjectIds.length === 0 && !task.parentTaskId && !task.hacerEl && !task.venceEl)
+  );
+}
+
 export function getInboxTasks(tasks: Task[]): Task[] {
-  return sortedTasks(
-    tasks.filter(
-      (task) =>
-        isActiveTask(task) &&
-        task.subjectIds.length === 0 &&
-        !task.parentTaskId &&
-        !task.hacerEl &&
-        !task.venceEl,
-    ),
+  return tasks.filter(isInboxTask).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export function getReviewedUnassignedTasks(tasks: Task[]): Task[] {
+  return sortedTasks(tasks.filter((task) =>
+    task.inboxReviewed && isActiveTask(task) && !task.subjectIds.length && !task.parentTaskId,
+  ));
+}
+
+export function removeTaskFromList(tasks: Task[], taskId: string): Task[] {
+  return tasks.filter(({ id }) => id !== taskId).map((task) =>
+    task.parentTaskId === taskId ? { ...task, parentTaskId: null } : task,
   );
 }
 
@@ -1027,12 +1038,13 @@ export function getSubjectTasks(
   tasks: Task[],
   subjects: Subject[],
   subjectId: string,
+  includeCompleted = false,
 ): Task[] {
   const subjectIds = new Set(getSubjectAndDescendantIds(subjects, subjectId));
 
   return sortedTasks(
     tasks.filter(
-      (task) => isActiveTask(task) && task.subjectIds.some((id) => subjectIds.has(id)),
+      (task) => (includeCompleted || isActiveTask(task)) && task.subjectIds.some((id) => subjectIds.has(id)),
     ),
   );
 }

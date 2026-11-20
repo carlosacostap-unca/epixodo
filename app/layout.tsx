@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Epixodo | Tareas personales",
-  description: "Organiza tareas, asuntos y fases en un espacio de trabajo personal.",
+  title: "Epixodo",
+  description: "Tu espacio personal para planificar y llevar el día a día.",
 };
 
 export default function RootLayout({
