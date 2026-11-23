@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { compareDateOnly, getSubjectPath, getTaskAvailableDeliverables, getTaskAvailablePhases, isActiveTask, taskPriorities, taskStatuses, type Subject, type SubjectDeliverable, type SubjectPhase, type Task, type TaskDraft, type TaskPriority, type TaskStatus } from "../../lib/tasks";
 import { controlClass, FieldLabel, formatDate, getPhaseLabel, getPriorityLabel, getStatusLabel, getSubjectTreeItems, SubjectChips, TaskBadge, TaskEmptyState } from "./task-ui";
 import ui from "../../components/workspace-screen.module.css";
+import styles from "./planning.module.css";
 import type { TaskPatch } from "./task-operations";
 
 const buttonClass = `${ui.button} h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30`;
@@ -75,12 +76,37 @@ export function TaskEditModal({
     onClose();
   }
 
+  const readOnlyDates = (
+    <>
+      <div className={readOnlyFieldClass}>
+        <p className="text-[11px] font-bold uppercase text-[#8090ad]">Hacer el</p>
+        <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
+          {task.hacerEl ? formatDate(task.hacerEl) : "Sin fecha"}
+        </p>
+      </div>
+      <div className={readOnlyFieldClass}>
+        <p className="text-[11px] font-bold uppercase text-[#8090ad]">Vence el</p>
+        <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
+          {task.venceEl ? formatDate(task.venceEl) : "Sin fecha"}
+        </p>
+      </div>
+    </>
+  );
+  const readOnlyNotes = (
+    <div className={`${ui.inset} ${embedded ? "" : "min-h-24"} rounded-lg border border-[#2f3e59] bg-[#101827] px-4 py-3`}>
+      <p className="text-[11px] font-bold uppercase text-[#8090ad]">Notas</p>
+      <p className="mt-2 whitespace-pre-wrap text-sm text-[#cbd7ee]">
+        {task.notes || "Sin notas"}
+      </p>
+    </div>
+  );
+
   const content = (
     <>
         <div className="flex items-center justify-between gap-4 border-b border-[#263852] px-4 py-4 sm:px-5">
           <div className="min-w-0">
-            <p className="text-xs font-black uppercase text-[#8ab4f8]">Detalle de tarea</p>
-            <h3 id={titleId} className={embedded ? `${ui.panelTitle} mt-1 break-words` : "mt-1 break-words text-xl font-black text-[#eef4ff]"}>
+            {!embedded ? <p className="text-xs font-black uppercase text-[#8ab4f8]">Detalle de tarea</p> : null}
+            <h3 id={titleId} className={embedded ? styles.listTitle : "mt-1 break-words text-xl font-black text-[#eef4ff]"}>
               {task.title}
             </h3>
           </div>
@@ -96,22 +122,27 @@ export function TaskEditModal({
 
         <div className="grid gap-4 p-4 sm:p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <TaskBadge tone={task.status === "waiting" ? "info" : "neutral"}>
-              {getStatusLabel(task.status)}
-            </TaskBadge>
+            {embedded && !isEditing ? (
+              <label className="inline-flex min-h-11 cursor-pointer items-center gap-2.5 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  aria-label={`Completar ${task.title}`}
+                  checked={isCompleted}
+                  onChange={(event) => onPatch(task.id, { status: event.target.checked ? "completed" : "pending" })}
+                  className="size-4 accent-(--accent)"
+                />
+                {getStatusLabel(task.status)}
+              </label>
+            ) : (
+              <TaskBadge tone={task.status === "waiting" ? "info" : "neutral"}>
+                {getStatusLabel(task.status)}
+              </TaskBadge>
+            )}
             {isOverdue ? <TaskBadge tone="danger">Vencida</TaskBadge> : null}
             {isDueToday ? <TaskBadge tone="warning">Vence hoy</TaskBadge> : null}
             {isUnplanned ? <TaskBadge tone="warning">Sin plan</TaskBadge> : null}
           </div>
 
-          {embedded && !isEditing ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-y border-[#263852] py-3">
-              <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
-              <button type="button" onClick={() => setIsSubjectPickerOpen(true)} className={`${ui.button} ${ui.primary} min-h-11 rounded-md bg-[#b4cdf5] px-3 text-sm font-bold text-[#101922] hover:bg-[#d1e2fc]`}>
-                Asignar asuntos
-              </button>
-            </div>
-          ) : null}
           {isEditing ? (
             <>
               <input
@@ -132,19 +163,26 @@ export function TaskEditModal({
             </>
           ) : (
             <>
-              {!embedded ? (
+              {embedded ? (
+                <>
+                  <div className={styles.inspectorDates}>{readOnlyDates}</div>
+                  <div className="grid gap-2 border-b border-(--workspace-border) pb-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="text-sm font-semibold">Asuntos</p>
+                      <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
+                    </div>
+                    <button type="button" onClick={() => setIsSubjectPickerOpen(true)} className={ui.button}>
+                      Asignar asuntos
+                    </button>
+                  </div>
+                </>
+              ) : (
                 <div className={`${ui.inset} rounded-lg border border-[#2f3e59] bg-[#101827] px-4 py-3`}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Título</p>
                   <p className="mt-1 text-base font-semibold text-[#eef4ff]">{task.title}</p>
                 </div>
-              ) : null}
-
-              <div className={`${ui.inset} min-h-24 rounded-lg border border-[#2f3e59] bg-[#101827] px-4 py-3`}>
-                <p className="text-[11px] font-bold uppercase text-[#8090ad]">Notas</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-[#cbd7ee]">
-                  {task.notes || "Sin notas"}
-                </p>
-              </div>
+              )}
+              {readOnlyNotes}
             </>
           )}
 
@@ -290,18 +328,7 @@ export function TaskEditModal({
                     {parentTask?.title ?? "Tarea raiz"}
                   </p>
                 </div>
-                <div className={readOnlyFieldClass}>
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Hacer el</p>
-                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
-                    {task.hacerEl ? formatDate(task.hacerEl) : "Sin fecha"}
-                  </p>
-                </div>
-                <div className={readOnlyFieldClass}>
-                  <p className="text-[11px] font-bold uppercase text-[#8090ad]">Vence el</p>
-                  <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
-                    {task.venceEl ? formatDate(task.venceEl) : "Sin fecha"}
-                  </p>
-                </div>
+                {!embedded ? readOnlyDates : null}
                 <div className={readOnlyFieldClass}>
                   <p className="text-[11px] font-bold uppercase text-[#8090ad]">Prioridad</p>
                   <p className="mt-1 text-sm font-semibold text-[#dce6f8]">
