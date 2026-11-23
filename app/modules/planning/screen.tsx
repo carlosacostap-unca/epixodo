@@ -9,7 +9,7 @@ import ui from "../../components/workspace-screen.module.css";
 import { inboxHref, planningViews, workspaceHref } from "../../lib/module-navigation";
 import { getHorizonLabel, getSubjectPath, taskTreeItems, type Subject, type SubjectHorizon } from "../../lib/tasks";
 import { PlanningHorizonBoard, SubjectHorizonExplorer } from "./horizon-explorer";
-import { planningTaskHref, subjectManagementHref, type PlanningView, type SubjectExplorerMode } from "./navigation";
+import { planningTaskHref, subjectManagementHref, type PlanningView, type SubjectExplorerMode, type SubjectTaskFilter } from "./navigation";
 import { planningHorizons } from "./subject-horizons";
 import { TaskCreateModal, TaskEditModal } from "./task-forms";
 import { formatDate, getStatusLabel, getSubjectTreeItems, taskMatchesQuery } from "./task-ui";
@@ -75,9 +75,9 @@ function SubjectTree({ subjects, selectedId, subjectHref }: {
   );
 }
 
-export default function PlanningScreen({ view, explorer, subjectId, taskId, highlightedId, returnEntryId }: {
+export default function PlanningScreen({ view, explorer, taskFilter = "activas", subjectId, taskId, highlightedId, returnEntryId }: {
   view: PlanningView; explorer: SubjectExplorerMode; subjectId?: string; taskId?: string;
-  highlightedId?: string; returnEntryId?: string;
+  highlightedId?: string; returnEntryId?: string; taskFilter?: SubjectTaskFilter;
 }) {
   const workspace = useWorkspace();
   const { planning, tasks, subjects, phases, deliverables, today } = workspace;
@@ -90,11 +90,16 @@ export default function PlanningScreen({ view, explorer, subjectId, taskId, high
   const isBoard = isSubjects && explorer === "tablero";
   const subject = isSubjects ? subjects.find(({ id }) => id === subjectId) : undefined;
   const subjectPath = subject ? getSubjectPath(subjects, subject.parentSubjectId) : "";
-  const listHref = planningTaskHref(view, subject?.id, undefined, { explorer, returnEntryId });
+  const listHref = planningTaskHref(view, subject?.id, undefined, { explorer, returnEntryId, taskFilter });
   const searchKey = planningTaskHref(view, subject?.id);
   const search = searchState?.href === searchKey ? searchState.text : "";
-  const visibleTasks = view === "subjects" ? (subject ? planning.getTasksForSubject(subject.id) : []) : planning.views[view];
-  const selectedTask = visibleTasks.find(({ id }) => id === taskId);
+  const allTasks = isSubjects ? (subject ? planning.getTasksForSubject(subject.id) : []) : planning.views[view];
+  const completedCount = allTasks.filter((task) => task.status === "completed").length;
+  const activeCount = allTasks.length - completedCount;
+  const visibleTasks = isSubjects && taskFilter !== "todas"
+    ? allTasks.filter((task) => taskFilter === "completadas" ? task.status === "completed" : task.status !== "completed")
+    : allTasks;
+  const selectedTask = allTasks.find(({ id }) => id === taskId);
   const assignedTask = visibleTasks.find(({ id }) => id === highlightedId);
   const filtered = taskTreeItems(visibleTasks.filter((task) => taskMatchesQuery(task, tasks, subjects, phases, search)));
   const heading = subject?.name ?? labels[view];
@@ -104,10 +109,12 @@ export default function PlanningScreen({ view, explorer, subjectId, taskId, high
   const subjectHref = (id: string) => planningTaskHref("subjects", id, id === subject?.id ? selectedTask?.id : undefined, {
     explorer: isBoard ? "horizonte" : explorer,
     returnEntryId,
+    taskFilter: id === subject?.id ? taskFilter : "activas",
   });
   const explorerHref = (mode: SubjectExplorerMode) => planningTaskHref("subjects", subject?.id, subject ? selectedTask?.id : undefined, {
     explorer: mode,
     returnEntryId,
+    taskFilter,
   });
 
   useEffect(() => {
@@ -165,6 +172,7 @@ export default function PlanningScreen({ view, explorer, subjectId, taskId, high
                   <span aria-hidden="true" className="text-lg leading-none">+</span> Nueva tarea
                 </button>
               ) : null}
+
             </div>
           </div>
           <nav aria-label="Vistas de Planificación" className={`${ui.tabs} ${styles.tabs}`}>
@@ -261,6 +269,24 @@ export default function PlanningScreen({ view, explorer, subjectId, taskId, high
                   {!search ? <kbd aria-hidden="true" className={styles.searchKey}>/</kbd> : null}
                 </label>
               ) : null}
+              {subject ? (
+                <nav aria-label="Filtrar tareas del asunto" className={styles.taskFilters}>
+                  {([
+                    { value: "activas", label: "Por realizar", count: activeCount },
+                    { value: "completadas", label: "Completadas", count: completedCount },
+                    { value: "todas", label: "Todas", count: allTasks.length },
+                  ] as const).map(({ value, label, count }) => (
+                    <Link
+                      key={value}
+                      href={planningTaskHref("subjects", subject.id, undefined, { explorer, returnEntryId, taskFilter: value })}
+                      aria-current={taskFilter === value ? "page" : undefined}
+                      scroll={false}
+                    >
+                      {label} <span className={styles.tabCount}>{count}</span>
+                    </Link>
+                  ))}
+                </nav>
+              ) : null}
             </div>
             {assignedTask ? (
               <p role="status" className="border-b border-(--workspace-border) bg-(--workspace-selection) px-4 py-3 text-sm">
@@ -275,7 +301,7 @@ export default function PlanningScreen({ view, explorer, subjectId, taskId, high
                       <input type="checkbox" aria-label={`Completar ${task.title}`} checked={task.status === "completed"} onChange={(event) => planning.setTaskStatus(task.id, event.target.checked ? "completed" : "pending")} className="size-4 accent-(--accent)" />
                     </label>
                     <Link
-                      href={planningTaskHref(view, subject?.id, task.id, { explorer, returnEntryId })}
+                      href={planningTaskHref(view, subject?.id, task.id, { explorer, returnEntryId, taskFilter })}
                       aria-current={selectedTask?.id === task.id ? "true" : undefined}
                       className={styles.taskLink}
                     >
@@ -289,7 +315,23 @@ export default function PlanningScreen({ view, explorer, subjectId, taskId, high
                 ))}
               </ul>
             ) : (
-              <p className="px-4 py-6 text-sm text-(--workspace-muted)">{search.trim() && canCreate ? "No hay tareas que coincidan con la búsqueda." : canCreate ? "No hay tareas en esta lista." : "Elegí un asunto para ver sus tareas."}</p>
+              <div className="px-4 py-6 text-sm text-(--workspace-muted)">
+                <p>{search.trim() && canCreate
+                  ? "No hay tareas que coincidan con la búsqueda."
+                  : subject && taskFilter === "activas"
+                    ? "No quedan tareas por realizar en este asunto."
+                    : subject && taskFilter === "completadas"
+                      ? "Todavía no hay tareas completadas en este asunto."
+                      : canCreate ? "No hay tareas en esta lista." : "Elegí un asunto para ver sus tareas."}</p>
+                {subject && taskFilter === "activas" && !search.trim() && completedCount > 0 ? (
+                  <Link
+                    href={planningTaskHref("subjects", subject.id, undefined, { explorer, returnEntryId, taskFilter: "completadas" })}
+                    className={styles.actionLink}
+                  >
+                    Ver completadas ({completedCount})
+                  </Link>
+                ) : null}
+              </div>
             )}
           </section>
 

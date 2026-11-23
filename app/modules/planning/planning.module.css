@@ -202,6 +202,35 @@
   padding: 1rem;
 }
 
+.taskFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.taskFilters a {
+  display: inline-flex;
+  min-block-size: 2.75rem;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  color: var(--workspace-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.taskFilters a:hover {
+  background: var(--workspace-hover);
+}
+
+.taskFilters a[aria-current="page"] {
+  border-color: var(--workspace-control-border);
+  background: var(--workspace-selection);
+  color: var(--workspace-ink);
+}
+
 .breadcrumb {
   overflow-wrap: anywhere;
   color: var(--accent);
