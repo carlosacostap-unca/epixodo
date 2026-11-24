@@ -12,7 +12,7 @@
   background: color-mix(in srgb, var(--accent) 19%, var(--workspace-surface));
 }
 
-.screen .taskRow {
+:is(.screen, .planningTasks) .taskRow {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   inline-size: auto;
@@ -25,11 +25,11 @@
   translate: none;
 }
 
-.screen .taskMarker {
+:is(.screen, .planningTasks) .taskMarker {
   display: none;
 }
 
-.screen .taskToggle {
+:is(.screen, .planningTasks) .taskToggle {
   display: grid;
   inline-size: 2.75rem;
   block-size: 2.75rem;
@@ -40,31 +40,31 @@
   background: var(--workspace-surface);
 }
 
-.screen .taskToggle input {
+:is(.screen, .planningTasks) .taskToggle input {
   accent-color: var(--accent);
 }
 
-.screen .taskDetail {
+:is(.screen, .planningTasks) .taskDetail {
   min-block-size: 2.75rem;
 }
 
-.screen .taskDetail:focus-visible {
+:is(.screen, .planningTasks) .taskDetail:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   box-shadow: none;
 }
 
-.screen .taskTitle {
+:is(.screen, .planningTasks) .taskTitle {
   color: inherit;
   white-space: normal;
   overflow-wrap: anywhere;
 }
 
-.screen .taskMeta {
+:is(.screen, .planningTasks) .taskMeta {
   color: var(--workspace-muted);
 }
 
-.screen .reviewLink {
+:is(.screen, .planningTasks) .reviewLink {
   grid-column: 2;
   color: var(--accent);
 }

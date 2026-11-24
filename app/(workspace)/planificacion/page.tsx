@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import TaskManager from "../../components/task-manager";
 import { getPageUser } from "../../lib/auth";
 import { planningViews, resolveWorkspaceView } from "../../lib/module-navigation";
-import { resolveSubjectExplorer, resolveSubjectTaskFilter } from "../../modules/planning/navigation";
+import { planningTaskHref, resolveSubjectExplorer, resolveSubjectTaskFilter } from "../../modules/planning/navigation";
 import PlanningScreen from "../../modules/planning/screen";
 
 export const metadata = { title: "Planificación | Epixodo" };
@@ -12,6 +12,8 @@ export default async function PlanningPage({ searchParams }: PageProps<"/planifi
   const { vista, asunto, tarea, asignada, desdeEntrada, explorador, filtro } = await searchParams;
   const view = resolveWorkspaceView(planningViews, vista);
   const subjectId = typeof asunto === "string" ? asunto : undefined;
+  const returnEntryId = typeof desdeEntrada === "string" ? desdeEntrada : undefined;
+  const subjectOptions = { explorer: resolveSubjectExplorer(explorador), taskFilter: resolveSubjectTaskFilter(filtro), returnEntryId };
 
   if (view === "calendar" || vista === "gestion") {
     return (
@@ -20,6 +22,9 @@ export default async function PlanningPage({ searchParams }: PageProps<"/planifi
         activeView={view === "calendar" ? "calendar" : "subjects"}
         tabs={planningViews}
         initialSubjectId={subjectId ?? null}
+        planningReturnHref={vista === "gestion" && (subjectId || returnEntryId || explorador || filtro)
+          ? planningTaskHref("subjects", subjectId, undefined, subjectOptions)
+          : undefined}
       />
     );
   }
@@ -27,12 +32,12 @@ export default async function PlanningPage({ searchParams }: PageProps<"/planifi
   return (
     <PlanningScreen
       view={view}
-      explorer={view === "subjects" ? resolveSubjectExplorer(explorador) : "horizonte"}
-      taskFilter={resolveSubjectTaskFilter(filtro)}
+      explorer={view === "subjects" ? subjectOptions.explorer : "horizonte"}
+      taskFilter={subjectOptions.taskFilter}
       subjectId={subjectId}
       taskId={typeof tarea === "string" ? tarea : undefined}
       highlightedId={typeof asignada === "string" ? asignada : undefined}
-      returnEntryId={typeof desdeEntrada === "string" ? desdeEntrada : undefined}
+      returnEntryId={returnEntryId}
     />
   );
 }

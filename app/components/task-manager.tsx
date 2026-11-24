@@ -1,9 +1,7 @@
 "use client";
 
-import { type DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { type DragEvent, type ReactNode, FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { workspaceHref, type LegacyWorkspaceView, type WorkspaceView } from "../lib/module-navigation";
 import { useWorkspace, WorkspaceLoading } from "./workspace-provider";
 import NutritionView from "./nutrition-view";
@@ -16,7 +14,10 @@ import ViewIcon from "./view-icon";
 import dailyStyles from "./daily-workspace.module.css";
 import ui from "./workspace-screen.module.css";
 import { TaskCreateModal, TaskEditModal } from "../modules/planning/task-forms";
-import { formatDate, getStatusLabel, getPriorityLabel, taskMatchesQuery, sortedSubjects, TaskEmptyState, TaskBadge, FieldLabel, SubjectChips, controlClass } from "../modules/planning/task-ui";
+import PlanningTabs from "../modules/planning/planning-tabs";
+import planningStyles from "../modules/planning/planning.module.css";
+import { subjectManagementHref } from "../modules/planning/navigation";
+import { formatDate, getStatusLabel, getPriorityLabel, taskMatchesQuery, sortedSubjects, TaskEmptyState, TaskBadge, FieldLabel, SubjectChips } from "../modules/planning/task-ui";
 import {
   compareDateOnly,
   getPhaseDateRangeError,
@@ -77,6 +78,9 @@ const viewDescriptions: Record<Exclude<ViewKey, "today">, string> = {
 };
 
 const todayDate = new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+const planningControlClass = `${ui.control} w-full px-3`;
+const primaryButtonClass = `${ui.button} ${ui.primary}`;
+const dangerButtonClass = `${ui.button} ${ui.danger}`;
 
 function PhaseChip({ phase }: { phase: SubjectPhase | null }) {
   if (!phase) {
@@ -194,6 +198,45 @@ function TaskRow({
   );
 }
 
+function PlanningFormDialog({ title, subjectName, onClose, children }: {
+  title: string;
+  subjectName?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const trigger = document.activeElement;
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      if (trigger instanceof HTMLElement && trigger.isConnected) trigger.focus();
+    };
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      className={`${ui.dialog} m-auto w-[calc(100%-2rem)] max-w-xl border shadow-2xl backdrop:bg-[#050812]/75`}
+      aria-labelledby={titleId}
+    >
+      <header className="flex items-start justify-between gap-4 border-b border-(--workspace-border) p-4 sm:px-5">
+        <div className="min-w-0">
+          <h2 id={titleId} className={ui.panelTitle}>{title}</h2>
+          {subjectName ? <p className="mt-1 wrap-anywhere text-sm text-(--workspace-muted)">{subjectName}</p> : null}
+        </div>
+        <button type="button" onClick={onClose} aria-label="Cerrar" className={`${ui.button} ${ui.iconButton} shrink-0`}>×</button>
+      </header>
+      {children}
+    </dialog>
+  );
+}
+
 function SubjectCreateModal({
   isOpen,
   subjects,
@@ -229,90 +272,66 @@ function SubjectCreateModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[#050812]/75 px-4 py-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="new-subject-title"
-    >
-      <div className="w-full max-w-xl rounded-lg border border-[#31415e] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]">
-        <div className="flex items-center justify-between gap-4 border-b border-[#263852] px-4 py-4 sm:px-5">
-          <div>
-            <p className="text-xs font-black uppercase text-[#8ab4f8]">Nuevo asunto</p>
-            <h3 id="new-subject-title" className="mt-1 text-xl font-black text-[#eef4ff]">
-              Crear asunto
-            </h3>
-          </div>
+    <PlanningFormDialog title="Crear asunto" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="grid gap-4 p-4 sm:p-5">
+        <input
+          name="name"
+          placeholder="Nombre del asunto"
+          aria-label="Nombre del nuevo asunto"
+          autoFocus
+          className={planningControlClass}
+        />
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FieldLabel label="Asunto superior">
+            <select
+              name="parentSubjectId"
+              defaultValue={defaultParentSubjectId ?? ""}
+              aria-label="Asunto superior"
+              className={planningControlClass}
+            >
+              <option value="">Asunto raiz</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>
+                  {getSubjectPath(subjects, subject.id)}
+                </option>
+              ))}
+            </select>
+          </FieldLabel>
+
+          <FieldLabel label="Horizonte">
+            <select
+              name="horizon"
+              defaultValue="none"
+              aria-label="Horizonte"
+              className={planningControlClass}
+            >
+              {subjectHorizons.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </FieldLabel>
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-(--workspace-border) pt-4">
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+            className={ui.button}
           >
-            x
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            className={primaryButtonClass}
+          >
+            Crear asunto
           </button>
         </div>
-
-        <form onSubmit={handleSubmit} className="grid gap-4 p-4 sm:p-5">
-          <input
-            name="name"
-            placeholder="Nombre del asunto"
-            aria-label="Nombre del nuevo asunto"
-            autoFocus
-            className="h-12 min-w-0 rounded-lg border border-[#33435f] bg-[#0c1320] px-4 text-base font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#6d7b97] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
-          />
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <FieldLabel label="Asunto superior">
-              <select
-                name="parentSubjectId"
-                defaultValue={defaultParentSubjectId ?? ""}
-                aria-label="Asunto superior"
-                className={controlClass}
-              >
-                <option value="">Asunto raiz</option>
-                {subjects.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {getSubjectPath(subjects, subject.id)}
-                  </option>
-                ))}
-              </select>
-            </FieldLabel>
-
-            <FieldLabel label="Horizonte">
-              <select
-                name="horizon"
-                defaultValue="none"
-                aria-label="Horizonte"
-                className={controlClass}
-              >
-                {subjectHorizons.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </FieldLabel>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
-            >
-              Crear asunto
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </PlanningFormDialog>
   );
 }
 
@@ -365,107 +384,83 @@ function SubjectEditModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[#050812]/75 px-4 py-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="edit-subject-title"
-    >
-      <div className="w-full max-w-xl rounded-lg border border-[#31415e] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]">
-        <div className="flex items-center justify-between gap-4 border-b border-[#263852] px-4 py-4 sm:px-5">
-          <div className="min-w-0">
-            <p className="text-xs font-black uppercase text-[#8ab4f8]">Editar asunto</p>
-            <h3 id="edit-subject-title" className="mt-1 truncate text-xl font-black text-[#eef4ff]">
-              {subject.name}
-            </h3>
-          </div>
+    <PlanningFormDialog title="Editar asunto" subjectName={subject.name} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="grid gap-4 p-4 sm:p-5">
+        <input
+          name="name"
+          defaultValue={subject.name}
+          aria-label="Nombre del asunto"
+          autoFocus
+          className={planningControlClass}
+        />
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FieldLabel label="Asunto superior">
+            <select
+              name="parentSubjectId"
+              defaultValue={subject.parentSubjectId ?? ""}
+              aria-label="Asunto superior"
+              className={planningControlClass}
+            >
+              <option value="">Asunto raiz</option>
+              {parentSubjects.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {getSubjectPath(subjects, option.id)}
+                </option>
+              ))}
+            </select>
+          </FieldLabel>
+
+          <FieldLabel label="Horizonte">
+            <select
+              name="horizon"
+              defaultValue={subject.horizon}
+              aria-label="Horizonte"
+              className={planningControlClass}
+            >
+              {subjectHorizons.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </FieldLabel>
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-(--workspace-border) pt-4">
+          <button
+            type="button"
+            onClick={() => {
+              if (!subject) return;
+              const descendantCount = getSubjectDescendantIds(subjects, subject.id).length;
+              const message = descendantCount
+                ? `También se borrarán ${descendantCount} subasuntos. Las tareas se conservarán sin estas asociaciones. ¿Borrar ${subject.name}?`
+                : `Las tareas se conservarán sin esta asociación. ¿Borrar ${subject.name}?`;
+              if (window.confirm(message)) {
+                onDeleteSubject(subject.id);
+                onClose();
+              }
+            }}
+            className={`${dangerButtonClass} mr-auto`}
+          >
+            Borrar asunto
+          </button>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
+            className={ui.button}
           >
-            x
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            className={primaryButtonClass}
+          >
+            Guardar cambios
           </button>
         </div>
-
-        <form onSubmit={handleSubmit} className="grid gap-4 p-4 sm:p-5">
-          <input
-            name="name"
-            defaultValue={subject.name}
-            aria-label="Nombre del asunto"
-            autoFocus
-            className="h-12 min-w-0 rounded-lg border border-[#33435f] bg-[#0c1320] px-4 text-base font-semibold text-[#eef4ff] outline-none transition placeholder:text-[#6d7b97] focus:border-[#8ab4f8] focus:ring-2 focus:ring-[#8ab4f8]/20"
-          />
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <FieldLabel label="Asunto superior">
-              <select
-                name="parentSubjectId"
-                defaultValue={subject.parentSubjectId ?? ""}
-                aria-label="Asunto superior"
-                className={controlClass}
-              >
-                <option value="">Asunto raiz</option>
-                {parentSubjects.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {getSubjectPath(subjects, option.id)}
-                  </option>
-                ))}
-              </select>
-            </FieldLabel>
-
-            <FieldLabel label="Horizonte">
-              <select
-                name="horizon"
-                defaultValue={subject.horizon}
-                aria-label="Horizonte"
-                className={controlClass}
-              >
-                {subjectHorizons.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </FieldLabel>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
-            <button
-              type="button"
-              onClick={() => {
-                if (!subject) return;
-                const descendantCount = getSubjectDescendantIds(subjects, subject.id).length;
-                const message = descendantCount
-                  ? `También se borrarán ${descendantCount} subasuntos. Las tareas se conservarán sin estas asociaciones. ¿Borrar ${subject.name}?`
-                  : `Las tareas se conservarán sin esta asociación. ¿Borrar ${subject.name}?`;
-                if (window.confirm(message)) {
-                  onDeleteSubject(subject.id);
-                  onClose();
-                }
-              }}
-              className="mr-auto h-10 rounded-md border border-[#55352f] px-4 text-sm font-bold text-[#ff9d88] transition hover:bg-[#2e1716] focus:outline-none focus:ring-2 focus:ring-[#ff9d88]/30"
-            >
-              Borrar asunto
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="h-10 rounded-md border border-[#8ab4f8] bg-[#8ab4f8] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a6c8ff] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/40"
-            >
-              Guardar cambios
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </PlanningFormDialog>
   );
 }
 
@@ -500,17 +495,6 @@ function SubjectEventFormModal({
   const [kind, setKind] = useState<SubjectEventKind>(event?.kind ?? defaultKind);
   const [selectedSubjectId, setSelectedSubjectId] = useState(event?.subjectId ?? subjects?.[0]?.id ?? "");
   const availablePhases = subjects ? phases.filter((phase) => phase.subjectId === selectedSubjectId) : phases;
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    function handleEscape(keyEvent: KeyboardEvent) {
-      if (keyEvent.key === "Escape") onClose();
-    }
-
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -548,142 +532,115 @@ function SubjectEventFormModal({
     onClose();
   }
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[75] grid place-items-center bg-[#050812]/80 px-4 py-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="subject-event-form-title"
-    >
-      <div className="max-h-[calc(100dvh-3rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-[#315177] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.55)]">
-        <div className="flex items-center justify-between gap-4 border-b border-[#293852] px-4 py-4 sm:px-5">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">
-              {event ? `Editar ${getSubjectEventLabel(kind).toLocaleLowerCase("es")}` : `Nuevo ${getSubjectEventLabel(kind).toLocaleLowerCase("es")}`}
-            </p>
-            <h3 id="subject-event-form-title" className="mt-1 truncate text-xl font-black text-[#eef4ff]">
-              {subjectName}
-            </h3>
+  return (
+    <PlanningFormDialog title={`${event ? "Editar" : "Crear"} ${getSubjectEventLabel(kind).toLocaleLowerCase("es")}`} subjectName={subjects ? undefined : subjectName} onClose={handleClose}>
+      <form onSubmit={handleSubmit} className="grid gap-5 p-4 sm:p-5">
+        <fieldset className="grid gap-2">
+          <legend className="mb-1 text-xs font-black uppercase tracking-[0.12em] text-[#9aabc5]">
+            Tipo
+          </legend>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              ["event", "Evento", "Una actividad con horario"],
+              ["milestone", "Hito", "Un logro o punto de referencia"],
+              ["deadline", "Vencimiento", "Una entrega o fecha límite"],
+            ] as const).map(([value, label, hint]) => (
+              <label key={value} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="kind"
+                  value={value}
+                  checked={kind === value}
+                  onChange={() => { setKind(value); setFormError(null); }}
+                  className="peer sr-only"
+                />
+                <span className="block rounded-xl border border-[#344562] bg-[#0d1422] px-2 py-3 transition peer-checked:border-[#82afff] peer-checked:bg-[#152a48] peer-focus-visible:ring-2 peer-focus-visible:ring-[#82afff]/40 sm:p-3">
+                  <span className="block text-xs font-black text-[#eef4ff] sm:text-sm">{label}</span>
+                  <span className="mt-1 hidden text-xs text-(--workspace-muted) sm:block">{hint}</span>
+                </span>
+              </label>
+            ))}
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+        </fieldset>
+
+        {subjects ? (
+          <FieldLabel label="Asunto">
+            <select name="subjectId" value={selectedSubjectId} onChange={(changeEvent) => setSelectedSubjectId(changeEvent.target.value)} required className={planningControlClass}>
+              <option value="" disabled>Selecciona un asunto</option>
+              {subjects.map((subject) => <option key={subject.id} value={subject.id}>{getSubjectPath(subjects, subject.id)}</option>)}
+            </select>
+          </FieldLabel>
+        ) : null}
+
+        <FieldLabel label="Descripción">
+          <textarea
+            name="description"
+            defaultValue={event?.description ?? ""}
+            placeholder="Ej. Presentación aprobada por el cliente"
+            rows={4}
+            maxLength={500}
+            autoFocus
+            required
+            className={`${planningControlClass} min-h-28 resize-y py-3`}
+          />
+        </FieldLabel>
+
+        <FieldLabel label="Fecha">
+          <input
+            type="date"
+            name="date"
+            defaultValue={event?.date ?? defaultDate ?? ""}
+            required
+            className={planningControlClass}
+          />
+        </FieldLabel>
+
+        {kind === "event" ? (
+          <div className="grid grid-cols-2 gap-3">
+            <FieldLabel label="Hora de inicio">
+              <input type="time" name="startTime" defaultValue={event?.startTime ?? ""} required step={60} className={planningControlClass} />
+            </FieldLabel>
+            <FieldLabel label="Hora de finalización">
+              <input type="time" name="endTime" defaultValue={event?.endTime ?? ""} required step={60} className={planningControlClass} />
+            </FieldLabel>
+          </div>
+        ) : null}
+
+        <FieldLabel label="Fase (opcional)">
+          <select
+            key={selectedSubjectId}
+            name="phaseId"
+            defaultValue={event?.phaseId ?? ""}
+            className={planningControlClass}
           >
-            ×
+            <option value="">Sin fase</option>
+            {availablePhases.map((phase) => (
+              <option key={phase.id} value={phase.id}>{phase.name}</option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs font-medium leading-5 text-(--workspace-muted)">
+            {availablePhases.length > 0
+              ? "La fecha aparecerá vinculada a esta etapa del asunto."
+              : "Este asunto todavía no tiene fases disponibles."}
+          </span>
+        </FieldLabel>
+
+        {formError ? (
+          <p role="alert" className="rounded-lg border border-[#6f3c35] bg-[#2e1716] px-3 py-2 text-sm font-bold text-[#ff9d88]">
+            {formError}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-(--workspace-border) pt-4">
+          <button type="button" onClick={handleClose} className={ui.button}>
+            Cancelar
+          </button>
+          <button type="submit" className={primaryButtonClass}>
+            {event ? "Guardar cambios" : `Crear ${getSubjectEventLabel(kind).toLocaleLowerCase("es")}`}
           </button>
         </div>
-
-        <form onSubmit={handleSubmit} className="grid gap-5 p-4 sm:p-5">
-          <fieldset className="grid gap-2">
-            <legend className="mb-1 text-xs font-black uppercase tracking-[0.12em] text-[#9aabc5]">
-              Tipo
-            </legend>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                ["event", "Evento", "Una actividad con horario"],
-                ["milestone", "Hito", "Un logro o punto de referencia"],
-                ["deadline", "Vencimiento", "Una entrega o fecha límite"],
-              ] as const).map(([value, label, hint]) => (
-                <label key={value} className="cursor-pointer">
-                  <input
-                    type="radio"
-                    name="kind"
-                    value={value}
-                    checked={kind === value}
-                    onChange={() => { setKind(value); setFormError(null); }}
-                    className="peer sr-only"
-                  />
-                  <span className="block rounded-xl border border-[#344562] bg-[#0d1422] px-2 py-3 transition peer-checked:border-[#82afff] peer-checked:bg-[#152a48] peer-focus-visible:ring-2 peer-focus-visible:ring-[#82afff]/40 sm:p-3">
-                    <span className="block text-xs font-black text-[#eef4ff] sm:text-sm">{label}</span>
-                    <span className="mt-1 hidden text-xs text-[#8fa0bd] sm:block">{hint}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          {subjects ? (
-            <FieldLabel label="Asunto">
-              <select name="subjectId" value={selectedSubjectId} onChange={(changeEvent) => setSelectedSubjectId(changeEvent.target.value)} required className={controlClass}>
-                <option value="" disabled>Selecciona un asunto</option>
-                {subjects.map((subject) => <option key={subject.id} value={subject.id}>{getSubjectPath(subjects, subject.id)}</option>)}
-              </select>
-            </FieldLabel>
-          ) : null}
-
-          <FieldLabel label="Descripción">
-            <textarea
-              name="description"
-              defaultValue={event?.description ?? ""}
-              placeholder="Ej. Presentación aprobada por el cliente"
-              rows={4}
-              maxLength={500}
-              autoFocus
-              required
-              className={`${controlClass} min-h-28 resize-y py-3`}
-            />
-          </FieldLabel>
-
-          <FieldLabel label="Fecha">
-            <input
-              type="date"
-              name="date"
-              defaultValue={event?.date ?? defaultDate ?? ""}
-              required
-              className={controlClass}
-            />
-          </FieldLabel>
-
-          {kind === "event" ? (
-            <div className="grid grid-cols-2 gap-3">
-              <FieldLabel label="Hora de inicio">
-                <input type="time" name="startTime" defaultValue={event?.startTime ?? ""} required step={60} className={controlClass} />
-              </FieldLabel>
-              <FieldLabel label="Hora de finalización">
-                <input type="time" name="endTime" defaultValue={event?.endTime ?? ""} required step={60} className={controlClass} />
-              </FieldLabel>
-            </div>
-          ) : null}
-
-          <FieldLabel label="Fase (opcional)">
-            <select
-              key={selectedSubjectId}
-              name="phaseId"
-              defaultValue={event?.phaseId ?? ""}
-              className={controlClass}
-            >
-              <option value="">Sin fase</option>
-              {availablePhases.map((phase) => (
-                <option key={phase.id} value={phase.id}>{phase.name}</option>
-              ))}
-            </select>
-            <span className="mt-1 block text-xs font-medium leading-5 text-[#7185a3]">
-              {availablePhases.length > 0
-                ? "La fecha aparecerá vinculada a esta etapa del asunto."
-                : "Este asunto todavía no tiene fases disponibles."}
-            </span>
-          </FieldLabel>
-
-          {formError ? (
-            <p role="alert" className="rounded-lg border border-[#6f3c35] bg-[#2e1716] px-3 py-2 text-sm font-bold text-[#ff9d88]">
-              {formError}
-            </p>
-          ) : null}
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
-            <button type="button" onClick={handleClose} className="h-10 rounded-lg border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238]">
-              Cancelar
-            </button>
-            <button type="submit" className="h-10 rounded-lg border border-[#82afff] bg-[#82afff] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40">
-              {event ? "Guardar cambios" : `Crear ${getSubjectEventLabel(kind).toLocaleLowerCase("es")}`}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>,
-    document.body,
+      </form>
+    </PlanningFormDialog>
   );
 }
 
@@ -726,26 +683,25 @@ function SubjectEventSection({
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[#30486a] bg-[#111a2b]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#293852] bg-[#121c2d] px-4 py-3">
+    <section className={ui.panel}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--workspace-border) px-4 py-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">Calendario del asunto</p>
-          <h4 className="mt-1 text-base font-black text-[#eef4ff]">Eventos, hitos y vencimientos</h4>
+          <h3 className={ui.panelTitle}>Eventos, hitos y vencimientos</h3>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => openCreate("event")} className="rounded-lg border border-[#46678f] bg-[#142943] px-3 py-2 text-sm font-black text-[#82afff] transition hover:bg-[#1b3555] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">
+          <button type="button" onClick={() => openCreate("event")} className={ui.button}>
             + Evento
           </button>
-          <button type="button" onClick={() => openCreate("milestone")} className="rounded-lg border border-[#315f5a] bg-[#122b2a] px-3 py-2 text-sm font-black text-[#63d3a5] transition hover:bg-[#183735] focus:outline-none focus:ring-2 focus:ring-[#63d3a5]/30">
+          <button type="button" onClick={() => openCreate("milestone")} className={ui.button}>
             + Hito
           </button>
-          <button type="button" onClick={() => openCreate("deadline")} className="rounded-lg border border-[#66532f] bg-[#282116] px-3 py-2 text-sm font-black text-[#f2be67] transition hover:bg-[#332919] focus:outline-none focus:ring-2 focus:ring-[#f2be67]/30">
+          <button type="button" onClick={() => openCreate("deadline")} className={ui.button}>
             + Vencimiento
           </button>
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto border-b border-[#263852] px-4 py-3 hide-scrollbar" aria-label="Filtrar fechas clave">
+      <div className="flex flex-wrap gap-x-1 border-b border-(--workspace-border) px-2 pt-1" role="group" aria-label="Filtrar fechas clave">
         {([
           ["all", "Todas", subjectEvents.length],
           ["event", "Eventos", eventCount],
@@ -757,23 +713,23 @@ function SubjectEventSection({
             type="button"
             onClick={() => setFilter(value)}
             aria-pressed={filter === value}
-            className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-black transition ${filter === value ? "border-[#82afff] bg-[#1a3354] text-[#cfe0ff]" : "border-[#344562] text-[#91a0bb] hover:bg-[#182238]"}`}
+            className={ui.tab}
           >
-            {label} <span className="ml-1 font-mono opacity-70">{count}</span>
+            {label} <span className={planningStyles.tabCount}>{count}</span>
           </button>
         ))}
       </div>
 
       {visibleEvents.length === 0 ? (
-        <div className="m-4 rounded-xl border border-dashed border-[#3a4d69] bg-[#0d1727] px-5 py-8 text-center">
+        <div className={`${ui.inset} m-4 border px-5 py-6 text-center`}>
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-[#315177] bg-[#142642] text-[#82afff]" aria-hidden="true">◇</div>
-          <p className="mt-3 text-sm font-bold text-[#c9d5e7]">
+          <p className="mt-3 text-sm font-bold text-(--workspace-muted)">
             {subjectEvents.length === 0 ? "Aún no hay fechas clave." : "No hay elementos de este tipo."}
           </p>
-          <p className="mt-1 text-xs text-[#8191ac]">Registra un evento con horario, un logro importante o una fecha límite del asunto.</p>
+          <p className="mt-1 text-xs text-(--workspace-muted)">Registra un evento con horario, un logro importante o una fecha límite del asunto.</p>
         </div>
       ) : (
-        <ol className="relative max-h-[520px] overflow-y-auto p-4 before:absolute before:bottom-8 before:left-[43px] before:top-8 before:w-px before:bg-[#315177]">
+        <ol className="relative p-4 before:absolute before:bottom-8 before:left-[43px] before:top-8 before:w-px before:bg-(--workspace-border) lg:max-h-[520px] lg:overflow-y-auto">
           {visibleEvents.map((event) => {
             const phase = event.phaseId
               ? subjectPhases.find((item) => item.id === event.phaseId) ?? null
@@ -784,14 +740,14 @@ function SubjectEventSection({
                   <span className="text-[10px] font-black uppercase">{event.date.slice(5, 7)}</span>
                   <span className="text-base font-black leading-none">{event.date.slice(8, 10)}</span>
                 </time>
-                <article className="rounded-xl border border-[#2f3e59] bg-[#0f1726] p-3 transition hover:border-[#486080] sm:p-4">
+                <article className={`${ui.inset} border p-3 sm:p-4`}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ${subjectEventTones[event.kind]}`}>
                           {getSubjectEventLabel(event.kind)}
                         </span>
-                        <time dateTime={event.date} className="font-mono text-xs font-bold text-[#91a0bb]">{formatDate(event.date)}</time>
+                        <time dateTime={event.date} className="font-mono text-xs font-bold text-(--workspace-muted)">{formatDate(event.date)}</time>
                         {event.kind === "event" ? <span className="font-mono text-xs font-bold text-[#82afff]">{event.startTime} – {event.endTime}</span> : null}
                         {phase ? (
                           <span className="rounded-full border border-[#3a5170] bg-[#152238] px-2 py-0.5 text-[10px] font-black text-[#a9bdd8]">
@@ -801,9 +757,9 @@ function SubjectEventSection({
                       </div>
                       <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#e5ebf5]">{event.description}</p>
                     </div>
-                    <div className="flex w-full justify-end gap-1.5 sm:w-auto">
-                      <button type="button" onClick={() => openEdit(event)} className="h-8 rounded-md border border-[#344562] px-2.5 text-xs font-bold text-[#b9c5dd] transition hover:bg-[#182238]">Editar</button>
-                      <button type="button" onClick={() => { if (window.confirm(`¿Borrar este ${getSubjectEventLabel(event.kind).toLocaleLowerCase("es")}?`)) onDeleteEvent(event.id); }} className="h-8 rounded-md border border-[#55352f] px-2.5 text-xs font-bold text-[#ff9d88] transition hover:bg-[#2e1716]">Borrar</button>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => openEdit(event)} className={ui.button}>Editar</button>
+                      <button type="button" onClick={() => { if (window.confirm(`¿Borrar este ${getSubjectEventLabel(event.kind).toLocaleLowerCase("es")}?`)) onDeleteEvent(event.id); }} className={dangerButtonClass}>Borrar</button>
                     </div>
                   </div>
                 </article>
@@ -861,62 +817,33 @@ function CalendarEventCard({
   event,
   subjects,
   phases,
-  onOpenSubject,
   onEdit,
   onDelete,
 }: {
   event: SubjectEvent;
   subjects: Subject[];
   phases: SubjectPhase[];
-  onOpenSubject: (subjectId: string) => void;
   onEdit: (event: SubjectEvent) => void;
   onDelete: (eventId: string) => void;
 }) {
-  const isMilestone = event.kind === "milestone";
   const subjectPath = getSubjectPath(subjects, event.subjectId);
   const phase = event.phaseId ? phases.find((item) => item.id === event.phaseId) ?? null : null;
 
   return (
-    <article className="rounded-xl border border-[#2d405d] bg-[#0c1726] p-3 transition hover:border-[#466486]">
-      <div className="flex items-start gap-3">
-        <span
-          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-sm font-black ${subjectEventTones[event.kind]}`}
-          aria-hidden="true"
-        >
-          {event.kind === "event" ? "◷" : isMilestone ? "◇" : "!"}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`text-[10px] font-black uppercase tracking-[0.12em] ${
-                event.kind === "event" ? "text-[#82afff]" : isMilestone ? "text-[#63d3a5]" : "text-[#f2be67]"
-              }`}
-            >
-              {getSubjectEventLabel(event.kind)}
-            </span>
-            <time dateTime={event.date} className="font-mono text-[10px] font-bold text-[#8193af]">
-              {formatDate(event.date)}
-            </time>
-          </div>
-          {event.kind === "event" ? <p className="mt-2 font-mono text-xs font-bold text-[#82afff]">{event.startTime} – {event.endTime}</p> : null}
-          <p className="mt-1 text-sm font-bold leading-5 text-[#e8eef8]">{event.description}</p>
-          {phase ? (
-            <p className="mt-1.5 truncate text-[11px] font-bold text-[#9bacca]">
-              Fase · {phase.name}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => onOpenSubject(event.subjectId)}
-            className="mt-2 max-w-full truncate text-left text-xs font-bold text-[#82afff] transition hover:text-[#b8d1ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
-          >
-            {subjectPath || "Abrir asunto"} →
-          </button>
-          <div className="mt-3 flex gap-2">
-            <button type="button" onClick={() => onEdit(event)} className="rounded-md border border-[#344562] px-2.5 py-1.5 text-xs font-bold text-[#b9c5dd] hover:bg-[#182238]">Editar</button>
-            <button type="button" onClick={() => { if (window.confirm(`¿Borrar este ${getSubjectEventLabel(event.kind).toLocaleLowerCase("es")}?`)) onDelete(event.id); }} className="rounded-md border border-[#55352f] px-2.5 py-1.5 text-xs font-bold text-[#ff9d88] hover:bg-[#2e1716]">Borrar</button>
-          </div>
-        </div>
+    <article className={`${ui.inset} border p-3`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${subjectEventTones[event.kind]}`}>{getSubjectEventLabel(event.kind)}</span>
+        <time dateTime={event.date} className="font-mono text-xs text-(--workspace-muted)">{formatDate(event.date)}</time>
+      </div>
+      {event.kind === "event" ? <p className="mt-2 font-mono text-xs text-(--accent)">{event.startTime} – {event.endTime}</p> : null}
+      <p className="mt-1 wrap-anywhere text-sm font-semibold">{event.description}</p>
+      {phase ? <p className="mt-1 wrap-anywhere text-xs text-(--workspace-muted)">Fase · {phase.name}</p> : null}
+      <Link href={workspaceHref("subjects", event.subjectId)} className={`${ui.backLink} inline-flex wrap-anywhere`}>
+        {subjectPath || "Abrir asunto"} <span aria-hidden="true">→</span>
+      </Link>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => onEdit(event)} className={ui.button}>Editar</button>
+        <button type="button" onClick={() => { if (window.confirm(`¿Borrar este ${getSubjectEventLabel(event.kind).toLocaleLowerCase("es")}?`)) onDelete(event.id); }} className={`${ui.button} ${ui.danger}`}>Borrar</button>
       </div>
     </article>
   );
@@ -928,7 +855,6 @@ function CalendarView({
   phases,
   today,
   searchQuery,
-  onOpenSubject,
   onAddEvent,
   onPatchEvent,
   onDeleteEvent,
@@ -938,7 +864,6 @@ function CalendarView({
   phases: SubjectPhase[];
   today: string;
   searchQuery: string;
-  onOpenSubject: (subjectId: string) => void;
   onAddEvent: (subjectId: string, draft: SubjectEventDraft) => void;
   onPatchEvent: (eventId: string, patch: Partial<SubjectEventDraft>) => void;
   onDeleteEvent: (eventId: string) => void;
@@ -1013,26 +938,24 @@ function CalendarView({
   }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <section className="overflow-hidden rounded-2xl border border-[#2b4362] bg-[#0d1a2a] shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
-        <div className="flex flex-col gap-4 border-b border-[#293852] bg-[#101d30] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.42fr)]">
+      <section aria-labelledby="calendar-month-title" className={`${ui.panel} overflow-hidden`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--workspace-border) p-4">
           <div>
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
+            <h2 id="calendar-month-title" className={ui.panelTitle}>{monthLabel(monthKey)}</h2>
+            <p className="mt-1 text-sm text-(--workspace-muted)">
               {monthEvents.length} {monthEvents.length === 1 ? "fecha clave" : "fechas clave"}
             </p>
-            <h3 className="mt-1 text-2xl font-black tracking-[-0.03em] text-[#f2f6fc]">
-              {monthLabel(monthKey)}
-            </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" disabled={subjects.length === 0} onClick={() => { setEditingEvent(null); setIsFormOpen(true); }} className="h-10 rounded-xl border border-[#82afff] bg-[#82afff] px-3 text-sm font-black text-[#07111f] transition hover:bg-[#a8c7ff] disabled:cursor-not-allowed disabled:opacity-40">+ Evento</button>
-            <button type="button" onClick={() => moveMonth(-1)} aria-label="Mes anterior" className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#344d6c] text-lg font-black text-[#afbed3] transition hover:bg-[#172a43] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">←</button>
-            <button type="button" onClick={goToToday} className="h-10 rounded-xl border border-[#46678f] bg-[#142943] px-3 text-sm font-black text-[#c9dcf8] transition hover:bg-[#1b3555] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">Hoy</button>
-            <button type="button" onClick={() => moveMonth(1)} aria-label="Mes siguiente" className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#344d6c] text-lg font-black text-[#afbed3] transition hover:bg-[#172a43] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30">→</button>
+            <button type="button" disabled={subjects.length === 0} onClick={() => { setEditingEvent(null); setIsFormOpen(true); }} className={`${ui.button} ${ui.primary}`}>+ Evento</button>
+            <button type="button" onClick={() => moveMonth(-1)} aria-label="Mes anterior" className={`${ui.button} ${ui.iconButton}`}>←</button>
+            <button type="button" onClick={goToToday} className={ui.button}>Hoy</button>
+            <button type="button" onClick={() => moveMonth(1)} aria-label="Mes siguiente" className={`${ui.button} ${ui.iconButton}`}>→</button>
           </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto border-b border-[#263852] px-4 py-3 hide-scrollbar sm:px-5" aria-label="Filtrar calendario">
+        <div className="flex flex-wrap gap-x-1 border-b border-(--workspace-border) px-2 pt-1" role="group" aria-label="Filtrar calendario">
           {([
             ["all", "Todo", events.length],
             ["event", "Eventos", eventCount],
@@ -1044,26 +967,22 @@ function CalendarView({
               type="button"
               onClick={() => setFilter(value)}
               aria-pressed={filter === value}
-              className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-black transition ${
-                filter === value
-                  ? "border-[#82afff] bg-[#1a3354] text-[#d7e5fc]"
-                  : "border-[#344562] text-[#91a0bb] hover:bg-[#182238]"
-              }`}
+              className={ui.tab}
             >
-              {label} <span className="ml-1 font-mono opacity-70">{count}</span>
+              {label} <span className={planningStyles.tabCount}>{count}</span>
             </button>
           ))}
         </div>
 
-        <div className="grid grid-cols-7 border-b border-[#2a3c57] bg-[#0a1523] px-2 sm:px-3">
+        <div className="grid grid-cols-7 border-b border-(--workspace-border) bg-(--workspace-inset)">
           {calendarWeekdays.map((weekday) => (
-            <div key={weekday} className="py-2 text-center font-mono text-[9px] font-black uppercase tracking-[0.12em] text-[#7185a3] sm:text-[10px]">
+            <div key={weekday} className="py-2 text-center text-xs font-semibold text-(--workspace-muted)">
               {weekday}
             </div>
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-px bg-[#263852]" aria-label={`Calendario de ${monthLabel(monthKey)}`}>
+        <div className="grid grid-cols-7 gap-px bg-(--workspace-border)" role="group" aria-label={`Calendario de ${monthLabel(monthKey)}`}>
           {calendarDays.map((date) => {
             const dayEvents = eventsByDate.get(date) ?? [];
             const isCurrentMonth = date.startsWith(monthKey);
@@ -1076,26 +995,25 @@ function CalendarView({
                 type="button"
                 onClick={() => selectDate(date)}
                 aria-label={`${longDateLabel(date)}, ${dayEvents.length} ${dayEvents.length === 1 ? "fecha clave" : "fechas clave"}`}
+                aria-current={isToday ? "date" : undefined}
                 aria-pressed={isSelected}
-                className={`group min-h-20 min-w-0 bg-[#0d1a2a] p-1.5 text-left transition focus:z-[1] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#82afff] sm:min-h-28 sm:p-2.5 ${
-                  isSelected ? "bg-[#17304f] shadow-[inset_0_0_0_1px_#5f91d4]" : "hover:bg-[#12263d]"
-                } ${isCurrentMonth ? "" : "opacity-35"}`}
+                className={planningStyles.calendarDay}
               >
-                <span className={`flex h-6 w-6 items-center justify-center rounded-lg font-mono text-[11px] font-black ${isToday ? "bg-[#82afff] text-[#07111f]" : isSelected ? "text-[#dce9fc]" : "text-[#93a4bd]"}`}>
+                <span className={`grid size-6 place-items-center self-center rounded-md font-mono text-xs font-semibold md:self-start ${isToday ? "bg-(--accent) text-(--workspace-canvas)" : isCurrentMonth ? "" : "text-(--workspace-muted)"}`}>
                   {Number(date.slice(8, 10))}
                 </span>
-                <span className="mt-1.5 flex flex-wrap gap-1 sm:hidden" aria-hidden="true">
+                <span className="flex flex-wrap justify-center gap-0.5 md:hidden" aria-hidden="true">
                   {dayEvents.slice(0, 4).map((event) => (
                     <span key={event.id} className={`h-1.5 w-1.5 rounded-full ${event.kind === "event" ? "bg-[#82afff]" : event.kind === "milestone" ? "bg-[#63d3a5]" : "bg-[#f2be67]"}`} />
                   ))}
                 </span>
-                <span className="mt-1.5 hidden space-y-1 sm:block">
+                <span className="hidden min-w-0 space-y-1 md:block" aria-hidden="true">
                   {dayEvents.slice(0, 2).map((event) => (
                     <span key={event.id} className={`block truncate rounded-md border-l-2 px-1.5 py-1 text-[10px] font-bold ${subjectEventTones[event.kind]}`}>
                       {event.kind === "event" ? `${event.startTime} ` : ""}{event.description}
                     </span>
                   ))}
-                  {dayEvents.length > 2 ? <span className="block pl-1 font-mono text-[9px] font-black text-[#8da0bb]">+{dayEvents.length - 2} más</span> : null}
+                  {dayEvents.length > 2 ? <span className="block font-mono text-xs text-(--workspace-muted)">+{dayEvents.length - 2}</span> : null}
                 </span>
               </button>
             );
@@ -1103,34 +1021,33 @@ function CalendarView({
         </div>
       </section>
 
-      <aside className="space-y-5">
-        <section className="overflow-hidden rounded-2xl border border-[#315177] bg-[#101c2d]">
-          <div className="border-b border-[#293852] px-4 py-4">
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">Agenda del día</p>
-            <h3 className="mt-1 text-lg font-black text-[#eef4ff]">{longDateLabel(selectedDate)}</h3>
+      <aside className="min-w-0 space-y-4">
+        <section aria-labelledby="calendar-day-agenda" className={ui.panel}>
+          <div className="border-b border-(--workspace-border) p-4">
+            <h2 id="calendar-day-agenda" className={ui.panelTitle}>Agenda del día</h2>
+            <p className="mt-1 text-sm text-(--workspace-muted)" aria-live="polite">{longDateLabel(selectedDate)}</p>
           </div>
           <div className="space-y-2 p-3">
             {selectedEvents.length > 0 ? (
-              selectedEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onOpenSubject={onOpenSubject} onEdit={openEdit} onDelete={onDeleteEvent} />)
+              selectedEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onEdit={openEdit} onDelete={onDeleteEvent} />)
             ) : (
-              <div className="rounded-xl border border-dashed border-[#344d6c] px-4 py-8 text-center">
-                <p className="text-sm font-bold text-[#b8c5d8]">Día libre de fechas clave.</p>
-                <p className="mt-1 text-xs leading-5 text-[#7f91ad]">{subjects.length ? "Usa + Evento para registrar una actividad en este día." : "Crea un asunto para comenzar a registrar eventos."}</p>
+              <div className="px-2 py-4 text-sm text-(--workspace-muted)">
+                <p>Día libre de fechas clave.</p>
+                {!subjects.length ? <Link href={subjectManagementHref()} className={`${ui.backLink} inline-flex`}>Crear un asunto</Link> : null}
               </div>
             )}
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-2xl border border-[#2b4362] bg-[#0d1a2a]">
-          <div className="border-b border-[#293852] px-4 py-3">
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">En el horizonte</p>
-            <h3 className="mt-1 text-base font-black text-[#eaf1fb]">Próximas fechas</h3>
+        <section aria-labelledby="calendar-upcoming" className={ui.panel}>
+          <div className="border-b border-(--workspace-border) px-4 py-3">
+            <h2 id="calendar-upcoming" className={ui.panelTitle}>Próximas fechas</h2>
           </div>
           <div className="space-y-2 p-3">
             {upcomingEvents.length > 0 ? (
-              upcomingEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onOpenSubject={onOpenSubject} onEdit={openEdit} onDelete={onDeleteEvent} />)
+              upcomingEvents.map((event) => <CalendarEventCard key={event.id} event={event} subjects={subjects} phases={phases} onEdit={openEdit} onDelete={onDeleteEvent} />)
             ) : (
-              <p className="px-2 py-6 text-center text-sm text-[#8191ac]">No hay próximas fechas con este filtro.</p>
+              <p className="px-2 py-4 text-sm text-(--workspace-muted)">No hay próximas fechas con este filtro.</p>
             )}
           </div>
         </section>
@@ -1216,33 +1133,22 @@ function DeliverableFormModal({
     onClose();
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[#050812]/75 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="deliverable-form-title">
-      <div className="w-full max-w-xl rounded-xl border border-[#285968] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.46)]">
-        <div className="flex items-center justify-between gap-4 border-b border-[#24444f] px-4 py-4 sm:px-5">
-          <div>
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#67d4e7]">Resultado del asunto</p>
-            <h3 id="deliverable-form-title" className="mt-1 text-xl font-black text-[#eef4ff]">{deliverable ? "Editar entregable" : "Nuevo entregable"}</h3>
-            <p className="mt-1 text-xs text-[#8192ad]">{subjectName}</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-9 w-9 items-center justify-center rounded-md border border-[#344562] text-lg font-black text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#67d4e7]/30">×</button>
+  return (
+    <PlanningFormDialog title={deliverable ? "Editar entregable" : "Nuevo entregable"} subjectName={subjectName} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="grid gap-4 p-4 sm:p-5">
+        <FieldLabel label="Nombre">
+          <input name="name" defaultValue={deliverable?.name ?? ""} placeholder="Ej. Informe final" autoFocus required className={planningControlClass} />
+        </FieldLabel>
+        <FieldLabel label="Descripción">
+          <textarea name="description" defaultValue={deliverable?.description ?? ""} placeholder="Describe qué debe quedar listo y cómo reconocerlo." rows={4} required className={`${planningControlClass} h-auto resize-y py-3`} />
+        </FieldLabel>
+        {error ? <p role="alert" className="text-xs font-bold text-[#ff9d88]">{error}</p> : null}
+        <div className="flex justify-end gap-2 border-t border-(--workspace-border) pt-4">
+          <button type="button" onClick={onClose} className={ui.button}>Cancelar</button>
+          <button type="submit" className={primaryButtonClass}>{deliverable ? "Guardar entregable" : "Crear entregable"}</button>
         </div>
-        <form onSubmit={handleSubmit} className="grid gap-4 p-4 sm:p-5">
-          <FieldLabel label="Nombre">
-            <input name="name" defaultValue={deliverable?.name ?? ""} placeholder="Ej. Informe final" autoFocus required className={controlClass} />
-          </FieldLabel>
-          <FieldLabel label="Descripción">
-            <textarea name="description" defaultValue={deliverable?.description ?? ""} placeholder="Describe qué debe quedar listo y cómo reconocerlo." rows={4} required className={`${controlClass} h-auto resize-y py-3`} />
-          </FieldLabel>
-          {error ? <p role="alert" className="text-xs font-bold text-[#ff9d88]">{error}</p> : null}
-          <div className="flex justify-end gap-2 border-t border-[#263852] pt-4">
-            <button type="button" onClick={onClose} className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#67d4e7]/30">Cancelar</button>
-            <button type="submit" className="h-10 rounded-md border border-[#67d4e7] bg-[#67d4e7] px-4 text-sm font-black text-[#07111f] transition hover:bg-[#98e7f2] focus:outline-none focus:ring-2 focus:ring-[#67d4e7]/40">{deliverable ? "Guardar entregable" : "Crear entregable"}</button>
-          </div>
-        </form>
-      </div>
-    </div>,
-    document.body,
+      </form>
+    </PlanningFormDialog>
   );
 }
 
@@ -1275,18 +1181,18 @@ function SubjectDeliverableSection({
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[#285968] bg-[#0e1928]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#24444f] bg-[#10202c] px-4 py-3">
+    <section className={ui.panel}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--workspace-border) px-4 py-3">
         <div>
           <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#67d4e7]">Resultados concretos</p>
-          <h4 className="mt-1 text-base font-black text-[#eef4ff]">Entregables</h4>
+          <h3 className={ui.panelTitle}>Entregables</h3>
         </div>
-        <button type="button" onClick={openCreate} className="rounded-lg border border-[#347587] bg-[#12303a] px-3 py-2 text-sm font-black text-[#8ae2ef] transition hover:bg-[#173d49] focus:outline-none focus:ring-2 focus:ring-[#67d4e7]/30">Nuevo entregable</button>
+        <button type="button" onClick={openCreate} className={ui.button}>Nuevo entregable</button>
       </div>
       {subjectDeliverables.length === 0 ? (
-        <div className="m-4 rounded-lg border border-dashed border-[#326070] bg-[#0c1d27] px-5 py-8 text-center">
-          <p className="text-sm font-bold text-[#c6edf2]">Este asunto todavía no tiene entregables.</p>
-          <p className="mt-1 text-xs text-[#7da4ad]">Define el primer resultado que querés producir y luego reúne sus tareas.</p>
+        <div className={`${ui.inset} m-4 border px-5 py-6 text-center`}>
+          <p className="text-sm font-bold text-(--workspace-muted)">Este asunto todavía no tiene entregables.</p>
+          <p className="mt-1 text-xs text-(--workspace-muted)">Define el primer resultado que querés producir y luego reúne sus tareas.</p>
         </div>
       ) : (
         <div className="grid gap-3 p-4 lg:grid-cols-2">
@@ -1295,18 +1201,18 @@ function SubjectDeliverableSection({
             const completed = assignedTasks.filter((task) => task.status === "completed").length;
             const progress = assignedTasks.length ? Math.round((completed / assignedTasks.length) * 100) : 0;
             return (
-              <article key={deliverable.id} className="relative overflow-hidden rounded-xl border border-[#294756] bg-[#0c1725] p-4 pl-5 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-[#67d4e7]">
-                <div className="flex items-start justify-between gap-3">
+              <article key={deliverable.id} className={`${ui.inset} border p-4`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h5 className="text-base font-black text-[#eef4ff]">{deliverable.name}</h5>
-                    <p className="mt-1 text-sm leading-5 text-[#9eb1c7]">{deliverable.description}</p>
+                    <h5 className="wrap-anywhere text-base font-semibold">{deliverable.name}</h5>
+                    <p className="mt-1 text-sm leading-5 text-(--workspace-muted)">{deliverable.description}</p>
                   </div>
-                  <div className="flex shrink-0 gap-1.5">
-                    <button type="button" onClick={() => { setEditingDeliverable(deliverable); setIsFormOpen(true); }} className="rounded-md border border-[#344f61] px-2 py-1.5 text-xs font-bold text-[#b9d4df] hover:bg-[#142a38]">Editar</button>
-                    <button type="button" onClick={() => { if (window.confirm(`Las ${assignedTasks.length} tareas vinculadas se conservarán sin entregable. ¿Borrar “${deliverable.name}”?`)) onDeleteDeliverable(deliverable.id); }} className="rounded-md border border-[#55352f] px-2 py-1.5 text-xs font-bold text-[#ff9d88] hover:bg-[#2e1716]">Borrar</button>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => { setEditingDeliverable(deliverable); setIsFormOpen(true); }} className={ui.button}>Editar</button>
+                    <button type="button" onClick={() => { if (window.confirm(`Las ${assignedTasks.length} tareas vinculadas se conservarán sin entregable. ¿Borrar “${deliverable.name}”?`)) onDeleteDeliverable(deliverable.id); }} className={dangerButtonClass}>Borrar</button>
                   </div>
                 </div>
-                <div className="mt-4 flex items-center justify-between gap-3 text-xs font-bold text-[#8fb2bd]"><span>{completed} de {assignedTasks.length} tareas completadas</span><span className="font-mono text-[#67d4e7]">{progress}%</span></div>
+                <div className="mt-4 flex items-center justify-between gap-3 text-xs font-bold text-(--workspace-muted)"><span>{completed} de {assignedTasks.length} tareas completadas</span><span className="font-mono text-[#67d4e7]">{progress}%</span></div>
                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#1b3341]"><span className="block h-full rounded-full bg-[#67d4e7] transition-[width]" style={{ width: `${progress}%` }} /></div>
                 <div className="mt-4 grid gap-2">
                   {assignedTasks.length ? assignedTasks.map((task) => (
@@ -1314,7 +1220,7 @@ function SubjectDeliverableSection({
                       <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${task.status === "completed" ? "bg-[#63d3a5]" : "bg-[#67d4e7]"}`} />
                       <span className={`truncate ${task.status === "completed" ? "line-through opacity-60" : ""}`}>{task.title}</span>
                     </button>
-                  )) : <p className="rounded-lg border border-dashed border-[#315363] px-3 py-3 text-xs text-[#7f9eaa]">Sin tareas todavía. Crea una y quedará vinculada a este entregable.</p>}
+                  )) : <p className="rounded-lg border border-dashed border-[#315363] px-3 py-3 text-xs text-(--workspace-muted)">Sin tareas todavía. Crea una y quedará vinculada a este entregable.</p>}
                   <button type="button" onClick={() => onCreateTask(deliverable.id)} className="mt-1 w-fit text-xs font-black text-[#67d4e7] hover:text-[#9cecf5] focus:outline-none focus:underline">+ Añadir tarea</button>
                 </div>
               </article>
@@ -1341,17 +1247,6 @@ function PhaseFormModal({
   onClose: () => void;
 }) {
   const [rangeError, setRangeError] = useState<"planned" | "executed" | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
 
   if (!isOpen) {
     return null;
@@ -1385,93 +1280,67 @@ function PhaseFormModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[70] grid place-items-center bg-[#050812]/80 px-4 py-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="phase-form-title"
-    >
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#4a412c] bg-[#111a2b] shadow-[0_24px_90px_rgba(0,0,0,0.5)]">
-        <div className="flex items-center justify-between gap-4 border-b border-[#383526] px-4 py-4 sm:px-5">
-          <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#f6c177]">
-              {phase ? "Editar fase" : "Nueva fase"}
-            </p>
-            <h3 id="phase-form-title" className="mt-1 truncate text-xl font-black text-[#eef4ff]">
-              {subjectName}
-            </h3>
+    <PlanningFormDialog title={phase ? "Editar fase" : "Nueva fase"} subjectName={subjectName} onClose={handleClose}>
+      <form onSubmit={handleSubmit} className="grid gap-5 p-4 sm:p-5">
+        <FieldLabel label="Nombre de la fase">
+          <input
+            name="name"
+            defaultValue={phase?.name ?? ""}
+            placeholder="Ej. Preparación"
+            autoFocus
+            required
+            className={planningControlClass}
+          />
+        </FieldLabel>
+
+        <div className="grid gap-4 rounded-xl border border-[#293852] bg-[#0d1422] p-4 md:grid-cols-2">
+          <div className="grid gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#8ab4f8]">Plan</p>
+              <p className="mt-1 text-xs text-(--workspace-muted)">Las fechas que orientan el trabajo.</p>
+            </div>
+            <FieldLabel label="Inicio planificado">
+              <input type="date" name="plannedStart" defaultValue={phase?.plannedStart ?? ""} className={planningControlClass} />
+            </FieldLabel>
+            <FieldLabel label="Finalización planificada">
+              <input type="date" name="plannedEnd" defaultValue={phase?.plannedEnd ?? ""} className={planningControlClass} />
+            </FieldLabel>
+            {rangeError === "planned" ? (
+              <p role="alert" className="text-xs font-bold text-[#ff9d88]">
+                La finalización planificada no puede ser anterior al inicio.
+              </p>
+            ) : null}
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label="Cerrar"
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#4a412c] text-lg font-black text-[#d5c69e] transition hover:bg-[#282116] focus:outline-none focus:ring-2 focus:ring-[#f6c177]/30"
-          >
-            x
-          </button>
+
+          <div className="grid gap-3 border-t border-[#293852] pt-4 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#f6c177]">Ejecución</p>
+              <p className="mt-1 text-xs text-(--workspace-muted)">Lo que ocurrió en la práctica.</p>
+            </div>
+            <FieldLabel label="Inicio ejecutado">
+              <input type="date" name="executedStart" defaultValue={phase?.executedStart ?? ""} className={planningControlClass} />
+            </FieldLabel>
+            <FieldLabel label="Finalización ejecutada">
+              <input type="date" name="executedEnd" defaultValue={phase?.executedEnd ?? ""} className={planningControlClass} />
+            </FieldLabel>
+            {rangeError === "executed" ? (
+              <p role="alert" className="text-xs font-bold text-[#ff9d88]">
+                La finalización ejecutada no puede ser anterior al inicio.
+              </p>
+            ) : null}
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="grid gap-5 p-4 sm:p-5">
-          <FieldLabel label="Nombre de la fase">
-            <input
-              name="name"
-              defaultValue={phase?.name ?? ""}
-              placeholder="Ej. Preparación"
-              autoFocus
-              required
-              className={controlClass}
-            />
-          </FieldLabel>
-
-          <div className="grid gap-4 rounded-xl border border-[#293852] bg-[#0d1422] p-4 md:grid-cols-2">
-            <div className="grid gap-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.14em] text-[#8ab4f8]">Plan</p>
-                <p className="mt-1 text-xs text-[#8090ad]">Las fechas que orientan el trabajo.</p>
-              </div>
-              <FieldLabel label="Inicio planificado">
-                <input type="date" name="plannedStart" defaultValue={phase?.plannedStart ?? ""} className={controlClass} />
-              </FieldLabel>
-              <FieldLabel label="Finalización planificada">
-                <input type="date" name="plannedEnd" defaultValue={phase?.plannedEnd ?? ""} className={controlClass} />
-              </FieldLabel>
-              {rangeError === "planned" ? (
-                <p role="alert" className="text-xs font-bold text-[#ff9d88]">
-                  La finalización planificada no puede ser anterior al inicio.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="grid gap-3 border-t border-[#293852] pt-4 md:border-l md:border-t-0 md:pl-4 md:pt-0">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.14em] text-[#f6c177]">Ejecución</p>
-                <p className="mt-1 text-xs text-[#8090ad]">Lo que ocurrió en la práctica.</p>
-              </div>
-              <FieldLabel label="Inicio ejecutado">
-                <input type="date" name="executedStart" defaultValue={phase?.executedStart ?? ""} className={controlClass} />
-              </FieldLabel>
-              <FieldLabel label="Finalización ejecutada">
-                <input type="date" name="executedEnd" defaultValue={phase?.executedEnd ?? ""} className={controlClass} />
-              </FieldLabel>
-              {rangeError === "executed" ? (
-                <p role="alert" className="text-xs font-bold text-[#ff9d88]">
-                  La finalización ejecutada no puede ser anterior al inicio.
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t border-[#263852] pt-4">
-            <button type="button" onClick={handleClose} className="h-10 rounded-md border border-[#344562] px-4 text-sm font-bold text-[#b9c5dd] transition hover:bg-[#182238] focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30">
-              Cancelar
-            </button>
-            <button type="submit" className="h-10 rounded-md border border-[#f6c177] bg-[#f6c177] px-4 text-sm font-black text-[#1b1407] transition hover:bg-[#ffd797] focus:outline-none focus:ring-2 focus:ring-[#f6c177]/40">
-              {phase ? "Guardar fase" : "Crear fase"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-(--workspace-border) pt-4">
+          <button type="button" onClick={handleClose} className={ui.button}>
+            Cancelar
+          </button>
+          <button type="submit" className={primaryButtonClass}>
+            {phase ? "Guardar fase" : "Crear fase"}
+          </button>
+        </div>
+      </form>
+    </PlanningFormDialog>
   );
 }
 
@@ -1507,24 +1376,23 @@ function SubjectPhaseSection({
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[#3c3928] bg-[#111a2b]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#383526] bg-[#151a25] px-4 py-3">
+    <section className={ui.panel}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--workspace-border) px-4 py-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f6c177]">Secuencia del asunto</p>
-          <h4 className="mt-1 text-base font-black text-[#eef4ff]">Fases</h4>
+          <h3 className={ui.panelTitle}>Fases</h3>
         </div>
-        <button type="button" onClick={openCreate} className="rounded-lg border border-[#66532f] bg-[#282116] px-3 py-2 text-sm font-black text-[#f6c177] transition hover:border-[#8c713d] hover:bg-[#332919] focus:outline-none focus:ring-2 focus:ring-[#f6c177]/30">
+        <button type="button" onClick={openCreate} className={ui.button}>
           Nueva fase
         </button>
       </div>
 
       {orderedPhases.length === 0 ? (
-        <div className="m-4 rounded-lg border border-dashed border-[#544a31] bg-[#141720] px-5 py-8 text-center">
-          <p className="text-sm font-bold text-[#d7c9a8]">Este asunto todavía no tiene fases.</p>
-          <p className="mt-1 text-xs text-[#8f8a7b]">Crea la primera para separar el plan de lo que realmente se ejecutó.</p>
+        <div className={`${ui.inset} m-4 border px-5 py-6 text-center`}>
+          <p className="text-sm font-bold text-(--workspace-muted)">Este asunto todavía no tiene fases.</p>
+          <p className="mt-1 text-xs text-(--workspace-muted)">Crea la primera para separar el plan de lo que realmente se ejecutó.</p>
         </div>
       ) : (
-        <ol className="relative grid gap-0 p-4 before:absolute before:bottom-8 before:left-[35px] before:top-8 before:w-px before:bg-[#66532f]">
+        <ol className="relative grid gap-0 p-4 before:absolute before:bottom-8 before:left-[35px] before:top-8 before:w-px before:bg-(--workspace-border)">
           {orderedPhases.map((phase, index) => {
             const taskCount = tasks.filter((task) => task.phaseId === phase.id).length;
 
@@ -1533,18 +1401,18 @@ function SubjectPhaseSection({
                 <div className="relative z-[1] flex h-9 w-9 items-center justify-center rounded-full border border-[#8c713d] bg-[#282116] font-mono text-xs font-black text-[#f6c177]">
                   {String(index + 1).padStart(2, "0")}
                 </div>
-                <article className="rounded-xl border border-[#2f3e59] bg-[#0f1726] p-3 transition hover:border-[#4a4d45] sm:p-4">
+                <article className={`${ui.inset} border p-3 sm:p-4`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h5 className="truncate text-base font-black text-[#eef4ff]">{phase.name}</h5>
-                      <p className="mt-1 text-xs font-semibold text-[#91a0bb]">
+                      <h5 className="wrap-anywhere text-base font-semibold">{phase.name}</h5>
+                      <p className="mt-1 text-xs font-semibold text-(--workspace-muted)">
                         {taskCount} {taskCount === 1 ? "tarea" : "tareas"}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      <button type="button" onClick={() => onMovePhase(phase.id, "up")} disabled={index === 0} aria-label={`Subir ${phase.name}`} className="h-8 rounded-md border border-[#344562] px-2 text-xs font-black text-[#b9c5dd] transition hover:bg-[#182238] disabled:cursor-not-allowed disabled:opacity-30">↑</button>
-                      <button type="button" onClick={() => onMovePhase(phase.id, "down")} disabled={index === orderedPhases.length - 1} aria-label={`Bajar ${phase.name}`} className="h-8 rounded-md border border-[#344562] px-2 text-xs font-black text-[#b9c5dd] transition hover:bg-[#182238] disabled:cursor-not-allowed disabled:opacity-30">↓</button>
-                      <button type="button" onClick={() => openEdit(phase)} className="h-8 rounded-md border border-[#344562] px-2.5 text-xs font-bold text-[#b9c5dd] transition hover:bg-[#182238]">Editar</button>
+                      <button type="button" onClick={() => onMovePhase(phase.id, "up")} disabled={index === 0} aria-label={`Subir ${phase.name}`} className={`${ui.button} ${ui.iconButton}`}>↑</button>
+                      <button type="button" onClick={() => onMovePhase(phase.id, "down")} disabled={index === orderedPhases.length - 1} aria-label={`Bajar ${phase.name}`} className={`${ui.button} ${ui.iconButton}`}>↓</button>
+                      <button type="button" onClick={() => openEdit(phase)} className={ui.button}>Editar</button>
                       <button
                         type="button"
                         onClick={() => {
@@ -1553,7 +1421,7 @@ function SubjectPhaseSection({
                             : "¿Borrar esta fase?";
                           if (window.confirm(message)) onDeletePhase(phase.id);
                         }}
-                        className="h-8 rounded-md border border-[#55352f] px-2.5 text-xs font-bold text-[#ff9d88] transition hover:bg-[#2e1716]"
+                        className={dangerButtonClass}
                       >
                         Borrar
                       </button>
@@ -1607,7 +1475,7 @@ function SubjectFolderBrowser({
   onSelectSubject: (subjectId: string | null) => void;
   onAddSubject: (parentSubjectId: string | null) => void;
 }) {
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [currentFolderId, setCurrentFolderId] = useState(selectedSubjectId);
   const [subjectQuery, setSubjectQuery] = useState("");
   const currentFolder = currentFolderId
     ? subjects.find((subject) => subject.id === currentFolderId) ?? null
@@ -1645,67 +1513,66 @@ function SubjectFolderBrowser({
   return (
     <div>
       {subjects.length === 0 ? (
-        <TaskEmptyState label="Todavía no hay asuntos." hint="Crea la primera carpeta para organizar tu trabajo." />
+        <div className="flex flex-wrap items-center justify-between gap-3 py-2">
+          <p className="text-sm text-(--workspace-muted)">Todavía no hay asuntos.</p>
+          <button type="button" onClick={() => onAddSubject(null)} className={`${ui.button} ${ui.primary}`}>+ Asunto</button>
+        </div>
       ) : (
         <>
-          <div className="flex flex-col gap-3 border-b border-[#263852] pb-4 lg:flex-row lg:items-center lg:justify-between">
-            <nav aria-label="Ruta de asuntos" className="flex min-w-0 items-center gap-1 overflow-x-auto hide-scrollbar">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-(--workspace-border) pb-4">
+            <nav aria-label="Ruta de asuntos" className="flex min-w-0 flex-wrap items-center gap-1">
               <button
                 type="button"
                 onClick={() => navigateTo(null)}
-                className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-black transition ${currentFolderId === null ? "bg-[#1c3b64] text-[#d9e7ff]" : "text-[#8fa0bd] hover:bg-[#16283f] hover:text-[#d9e7ff]"}`}
+                aria-current={activeFolderId === null ? "page" : undefined}
+                className={ui.tab}
               >
                 Todos los asuntos
               </button>
               {breadcrumbSubjects.map((subject) => (
-                <div key={subject.id} className="flex shrink-0 items-center gap-1">
-                  <span aria-hidden="true" className="text-[#526681]">/</span>
+                <div key={subject.id} className="flex min-w-0 items-center gap-1">
+                  <span aria-hidden="true" className="text-(--workspace-muted)">/</span>
                   <button
                     type="button"
                     onClick={() => navigateTo(subject.id)}
                     aria-current={currentFolderId === subject.id ? "page" : undefined}
-                    className={`max-w-52 truncate rounded-lg px-2.5 py-1.5 text-xs font-black transition ${currentFolderId === subject.id ? "bg-[#1c3b64] text-[#d9e7ff]" : "text-[#8fa0bd] hover:bg-[#16283f] hover:text-[#d9e7ff]"}`}
+                    className={`${ui.tab} min-w-0 wrap-anywhere text-left`}
                   >
                     {subject.name}
                   </button>
                 </div>
               ))}
             </nav>
-            <div className="flex shrink-0 gap-2">
+            <div className="flex flex-wrap gap-2">
               {currentFolder ? (
-                <button type="button" onClick={() => navigateTo(currentFolder.parentSubjectId)} className="rounded-xl border border-[#344d6c] px-3 py-2 text-sm font-bold text-[#afbed3] transition hover:bg-[#16283f]">
-                  ← Subir
+                <button type="button" onClick={() => navigateTo(currentFolder.parentSubjectId)} className={ui.button}>
+                  <span aria-hidden="true">←</span> Subir
                 </button>
               ) : null}
               <button
                 type="button"
                 onClick={() => onAddSubject(activeFolderId)}
-                className="rounded-xl border border-[#82afff] bg-[#1a3354] px-3 py-2 text-sm font-black text-[#cfe0ff] transition hover:bg-[#22436d] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                className={`${ui.button} ${ui.primary}`}
               >
                 + {currentFolder ? "Subasunto" : "Asunto"}
               </button>
             </div>
           </div>
 
-          <label className="relative mt-4 block max-w-xl">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#69809f]">⌕</span>
+          <label className={`${ui.label} mt-4 max-w-xl`}>
+            Buscar asuntos
             <input
+              type="search"
               value={subjectQuery}
               onChange={(event) => setSubjectQuery(event.target.value)}
               placeholder="Buscar en todas las carpetas"
-              aria-label="Buscar asuntos"
-              className="h-11 w-full rounded-xl border border-[#2b4261] bg-[#091522] pl-9 pr-3 text-sm font-semibold text-[#e7eef9] outline-none transition placeholder:text-[#637794] focus:border-[#82afff] focus:ring-2 focus:ring-[#82afff]/15"
+              className={`${ui.control} w-full px-3`}
             />
           </label>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {visibleSubjects.length === 0 ? (
-              <div className="col-span-full rounded-xl border border-dashed border-[#344d6c] bg-[#091522] px-5 py-10 text-center">
-                <p className="text-sm font-bold text-[#b9c7da]">{subjectQuery ? "No hay asuntos que coincidan." : "Esta carpeta todavía no tiene subasuntos."}</p>
-                <button type="button" onClick={() => onAddSubject(activeFolderId)} className="mt-3 text-sm font-black text-[#82afff] hover:text-[#b7d0ff]">
-                  {currentFolder ? "Crear el primer subasunto" : "Crear el primer asunto"}
-                </button>
-              </div>
+              <p className="col-span-full py-2 text-sm text-(--workspace-muted)">{subjectQuery ? "No hay asuntos que coincidan." : "Esta carpeta todavía no tiene subasuntos."}</p>
             ) : visibleSubjects.map((subject) => {
               const isSelected = selectedSubjectId === subject.id;
               const childCount = subjects.filter((item) => item.parentSubjectId === subject.id).length;
@@ -1716,37 +1583,29 @@ function SubjectFolderBrowser({
               return (
                 <article
                   key={subject.id}
-                  className={`group relative overflow-hidden rounded-2xl border transition duration-200 ${isSelected ? "border-[#6597dc] bg-[#17345a] shadow-[0_12px_32px_rgba(50,100,170,0.16)]" : "border-[#2d4564] bg-[#0b1828] hover:-translate-y-0.5 hover:border-[#4b6f99] hover:bg-[#102238]"}`}
+                  className={`${ui.panel} flex items-start gap-2 p-2`}
                 >
                   <button
                     type="button"
                     onClick={() => navigateTo(subject.id)}
                     aria-label={`Abrir carpeta ${subject.name}`}
-                    className="block w-full p-4 text-left focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#82afff]/40"
+                    aria-current={isSelected ? "true" : undefined}
+                    className={`${ui.selection} flex min-w-0 flex-1 items-start gap-3 rounded-lg p-2 text-left`}
                   >
-                    <span className="flex items-start justify-between gap-3">
-                      <span className={`flex h-11 w-11 items-center justify-center rounded-xl border ${isSelected ? "border-[#75a8ec] bg-[#204777] text-[#b9d4ff]" : "border-[#355274] bg-[#11263e] text-[#82afff]"}`}>
-                        <FolderIcon />
+                    <span aria-hidden="true" className="mt-0.5 shrink-0 text-(--accent)"><FolderIcon /></span>
+                    <span className="min-w-0">
+                      <span className="block wrap-anywhere text-sm font-semibold">{subject.name}</span>
+                      {subjectQuery ? <span className="mt-1 block wrap-anywhere text-xs text-(--workspace-muted)">{getSubjectPath(subjects, subject.parentSubjectId)}</span> : null}
+                      <span className="mt-2 block wrap-anywhere text-xs text-(--workspace-muted)">
+                        {childCount} {childCount === 1 ? "subasunto" : "subasuntos"} · {taskCount} {taskCount === 1 ? "tarea" : "tareas"} · {getHorizonLabel(subject.horizon)}
                       </span>
-                      <span className="text-lg text-[#6f8caf] transition group-hover:translate-x-0.5 group-hover:text-[#a9c7ee]" aria-hidden="true">→</span>
-                    </span>
-                    <span className="mt-4 block truncate text-base font-black text-[#edf3fc]">{subject.name}</span>
-                    {subjectQuery ? (
-                      <span className="mt-1 block truncate text-xs text-[#7f92ae]">{getSubjectPath(subjects, subject.parentSubjectId)}</span>
-                    ) : null}
-                    <span className="mt-4 flex flex-wrap gap-2 pr-8 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[#8ca0bc]">
-                      <span>{childCount} {childCount === 1 ? "subasunto" : "subasuntos"}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{taskCount} {taskCount === 1 ? "tarea" : "tareas"}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{getHorizonLabel(subject.horizon)}</span>
                     </span>
                   </button>
                   <button
                     type="button"
                     onClick={() => onAddSubject(subject.id)}
                     aria-label={`Crear subasunto dentro de ${subject.name}`}
-                    className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg border border-[#355274] bg-[#102238] text-sm font-black text-[#82afff] opacity-70 transition hover:bg-[#1a3556] hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#82afff]/30 group-hover:opacity-100"
+                    className={`${ui.button} ${ui.iconButton} shrink-0`}
                   >
                     +
                   </button>
@@ -1821,21 +1680,21 @@ function SubjectHorizonBoard({
               key={horizon.value}
               onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => handleDrop(event, horizon.value)}
-              className="rounded-lg border border-[#24344f] bg-[#0d1422] p-3"
+              className={`${ui.inset} border p-3`}
             >
               <div className="mb-3 flex items-center justify-between gap-3">
-                <h4 className="text-xs font-black uppercase text-[#dce6f8]">
+                <h3 className="text-sm font-semibold">
                   {horizon.label}
-                </h4>
-                <span className="rounded-full bg-[#22304a] px-2 py-0.5 text-xs font-bold text-[#b8c4dc]">
+                </h3>
+                <span className={planningStyles.tabCount}>
                   {horizonSubjects.length}
                 </span>
               </div>
 
-              <div className="flex min-h-24 flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 {horizonSubjects.length === 0 ? (
-                  <div className="flex min-h-24 w-full items-center justify-center rounded-md border border-dashed border-[#344562] px-3 text-center text-sm text-[#8090ad]">
-                    Arrastra asuntos aqui
+                  <div className="grid min-h-14 w-full place-items-center rounded-md border border-dashed border-(--workspace-border) px-3 text-center text-sm text-(--workspace-muted)">
+                    Sin asuntos en este horizonte
                   </div>
                 ) : (
                   horizonSubjects.map((subject) => {
@@ -1847,6 +1706,7 @@ function SubjectHorizonBoard({
                         type="button"
                         draggable
                         aria-label={`Abrir detalle de ${subject.name}`}
+                        aria-current={isSelected ? "true" : undefined}
                         onClick={() => onSelectSubject(subject.id)}
                         onDragStart={(event) => {
                           setDraggingSubjectId(subject.id);
@@ -1854,19 +1714,15 @@ function SubjectHorizonBoard({
                           event.dataTransfer.effectAllowed = "move";
                         }}
                         onDragEnd={() => setDraggingSubjectId(null)}
-                        className={`min-h-16 w-full rounded-lg border px-3 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 sm:w-[calc(50%-0.25rem)] 2xl:w-[calc(33.333%-0.34rem)] ${
-                          isSelected
-                            ? "border-[#8ab4f8] bg-[#142a47]"
-                            : "border-[#24344f] bg-[#101827] hover:border-[#3f5578] hover:bg-[#182238]"
-                        }`}
+                        className={`${ui.panel} ${ui.selection} min-h-16 w-full px-3 py-2 text-left sm:w-[calc(50%-0.25rem)] 2xl:w-[calc(33.333%-0.34rem)]`}
                       >
-                        <span className="block truncate text-sm font-semibold text-[#eef4ff]">
+                        <span className="block wrap-anywhere text-sm font-semibold">
                           {subject.name}
                         </span>
-                        <span className="mt-1 block truncate text-xs text-[#8fa0bd]">
+                        <span className="mt-1 block wrap-anywhere text-xs text-(--workspace-muted)">
                           {getSubjectPath(subjects, subject.parentSubjectId)}
                         </span>
-                        <span className="mt-2 block text-xs font-bold text-[#82afff]">
+                        <span className="mt-2 block text-xs font-semibold text-(--accent)">
                           Ver tareas y detalle →
                         </span>
                       </button>
@@ -1882,13 +1738,13 @@ function SubjectHorizonBoard({
   );
 }
 
-export default function TaskManager({ activeView, tabs, initialSubjectId }: {
+export default function TaskManager({ activeView, tabs, initialSubjectId, planningReturnHref }: {
   activeView: ViewKey;
   tabs: readonly WorkspaceView[];
   initialSubjectId: string | null;
+  planningReturnHref?: string;
 }) {
   const workspace = useWorkspace();
-  const router = useRouter();
   const [companionConversationCount, setCompanionConversationCount] = useState(0);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(initialSubjectId);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1901,6 +1757,7 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
   const [subjectViewMode, setSubjectViewMode] = useState<SubjectViewMode>("folders");
   const searchRef = useRef<HTMLInputElement>(null);
   const subjectDetailRef = useRef<HTMLDivElement>(null);
+  const isPlanningTool = activeView === "calendar" || activeView === "subjects";
 
   const selectedSubject = selectedSubjectId
     ? (workspace.subjects.find((subject) => subject.id === selectedSubjectId) ?? null)
@@ -1918,6 +1775,7 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
+      if (document.querySelector("dialog[open]")) return;
       const target = event.target as HTMLElement | null;
       const isTyping =
         target instanceof HTMLInputElement ||
@@ -1937,7 +1795,7 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
         return;
       }
 
-      if (event.key === "/") {
+      if (event.key === "/" && searchRef.current) {
         event.preventDefault();
         searchRef.current?.focus();
       }
@@ -2034,11 +1892,6 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
 
   const heading = activeView === "subjects" ? "Gestionar asuntos" : viewLabels[activeView];
   const hasSearch = searchQuery.trim().length > 0;
-  const calendarSearchCount = workspace.subjectEvents.filter((event) =>
-    `${event.description} ${getSubjectPath(workspace.subjects, event.subjectId)}`
-      .toLocaleLowerCase("es")
-      .includes(searchQuery.trim().toLocaleLowerCase("es")),
-  ).length;
   const emptyLabel =
     activeView === "subjects" && !selectedSubject
       ? "Elegi un asunto para ver sus tareas."
@@ -2047,14 +1900,23 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
         : "No hay tareas en esta vista.";
   const defaultTaskSubjectIds =
     activeView === "subjects" && selectedSubjectId ? [selectedSubjectId] : [];
-  function navigateToView(view: WorkspaceView, subjectId?: string) {
-    router.push(workspaceHref(view, subjectId));
-  }
+  const screenClass = activeView === "today"
+    ? `${ui.screen} ${dailyStyles.screen}`
+    : isPlanningTool ? `${ui.screen} ${planningStyles.planning} ${dailyStyles.planningTasks}` : "relative flex-1 overflow-x-hidden bg-[#07111d] text-[#eaf1fb]";
+  const planningSearch = (
+    <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
+      <label className={`${ui.label} min-w-36 flex-1 sm:w-64`}>
+        {activeView === "calendar" ? "Buscar fechas clave" : "Buscar tareas del asunto"}
+        <input type="search" ref={searchRef} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} aria-keyshortcuts="/" className={`${ui.control} w-full px-3`} />
+      </label>
+      {hasSearch ? <button type="button" onClick={() => { setSearchQuery(""); searchRef.current?.focus(); }} className={ui.button}>Limpiar búsqueda</button> : null}
+    </div>
+  );
 
   if (!workspace.isLoaded) return <WorkspaceLoading />;
 
   return (
-    <main className={activeView === "today" ? `${ui.screen} ${dailyStyles.screen}` : "relative flex-1 overflow-x-hidden bg-[#07111d] text-[#eaf1fb]"}>
+    <main className={screenClass}>
       {activeView === "today" ? (
         <div className={ui.frame}>
           <header className={`${ui.header} grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 pb-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end`}>
@@ -2094,7 +1956,21 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
           />
         </div>
       ) : (
-      <div className="relative min-w-0">
+      <div className={isPlanningTool ? ui.frame : "relative min-w-0"}>
+        {isPlanningTool ? (
+          <header className={ui.header}>
+            <div className={ui.heading}>
+              <h1 className={`${ui.title} ${planningStyles.title}`}>{heading}</h1>
+              {activeView === "subjects" ? (
+                <Link href={planningReturnHref ?? workspaceHref("subjects", selectedSubject?.id)} className={planningStyles.actionLink}>
+                  <span aria-hidden="true">←</span> Volver a Planificación
+                </Link>
+              ) : planningSearch}
+            </div>
+            <PlanningTabs view={activeView === "calendar" ? "calendar" : undefined} unassigned={workspace.planning.views.unassigned.length} />
+          </header>
+        ) : (
+        <>
         <div aria-hidden="true" className="app-grid pointer-events-none absolute inset-0" />
         {localNavigation.length > 1 ? (
           <nav aria-label="Vistas del módulo" className="border-b border-[#20334d] bg-[#0b1624]">
@@ -2128,9 +2004,31 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
 
         </div>
       </header>
+        </>
+        )}
 
-      <div className="mx-auto grid max-w-[1500px] gap-5 p-4 md:p-6 lg:p-8">
-        <section key={activeView} className="view-enter min-w-0 space-y-6">
+      <div className={isPlanningTool ? undefined : "mx-auto grid max-w-[1500px] gap-5 p-4 md:p-6 lg:p-8"}>
+        <section key={activeView} className={isPlanningTool ? "min-w-0 space-y-5" : "view-enter min-w-0 space-y-6"}>
+          {isPlanningTool ? (
+            activeView === "subjects" ? (
+                <div role="group" aria-label="Explorador de asuntos" className="flex w-fit flex-wrap gap-1 border-b border-(--workspace-border)">
+                  {(["folders", "horizon"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        setSubjectViewMode(mode);
+                        if (mode === "horizon") setSelectedSubjectId(null);
+                      }}
+                      aria-pressed={subjectViewMode === mode}
+                      className={ui.tab}
+                    >
+                      {mode === "folders" ? "Carpetas" : "Horizonte"}
+                    </button>
+                  ))}
+                </div>
+            ) : null
+          ) : (
           <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#20334d] pb-5">
             <div>
               <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
@@ -2145,10 +2043,6 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
                   : activeView === "expectations"
                   ? `${workspace.expectations.filter((item) => item.status === "pending").length} ${workspace.expectations.filter((item) => item.status === "pending").length === 1 ? "espera pendiente" : "esperas pendientes"}`
 
-                  : activeView === "calendar"
-                  ? hasSearch
-                    ? `${calendarSearchCount} de ${workspace.subjectEvents.length} fechas clave`
-                    : `${workspace.subjectEvents.length} ${workspace.subjectEvents.length === 1 ? "fecha clave" : "fechas clave"}`
                   : hasSearch
                     ? `${filteredTasks.length} de ${visibleTasks.length} resultados`
                     : `${visibleTasks.length} ${visibleTasks.length === 1 ? "tarea" : "tareas"}`}
@@ -2157,40 +2051,10 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
                 <h1 className="text-3xl font-black tracking-[-0.04em] text-[#f4f7fc] md:text-5xl">
                   {heading}
                 </h1>
-                {activeView === "subjects" ? (
-                  <div className="grid grid-cols-2 rounded-xl border border-[#293f5e] bg-[#0d1a2a] p-1">
-                    {[
-                      { key: "folders" as const, label: "Carpetas" },
-                      { key: "horizon" as const, label: "Horizonte" },
-                    ].map((item) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => {
-                          setSubjectViewMode(item.key);
-                          if (item.key === "horizon") setSelectedSubjectId(null);
-                        }}
-                        aria-pressed={subjectViewMode === item.key}
-                        className={`h-9 px-3 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-[#8ab4f8]/30 ${
-                          subjectViewMode === item.key
-                            ? "rounded-lg bg-[#82afff] text-[#07111f] shadow-[0_5px_16px_rgba(130,175,255,0.18)]"
-                            : "rounded-lg text-[#aebbd0] hover:bg-[#16283f]"
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
               </div>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[#8293ad]">{viewDescriptions[activeView]}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {activeView === "subjects" ? (
-                <Link href={workspaceHref("subjects", selectedSubjectId ?? undefined)} className="inline-flex min-h-11 items-center rounded-xl border border-[#314966] px-3 text-sm font-bold text-[#c9dbf4] hover:bg-[#142338]">
-                  Volver a Planificación
-                </Link>
-              ) : null}
               {hasSearch ? (
                 <button
                   type="button"
@@ -2200,7 +2064,7 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
                   Limpiar busqueda
                 </button>
               ) : null}
-              {activeView !== "companion" && activeView !== "subjects" && activeView !== "calendar" && activeView !== "nutrition" && activeView !== "locations" && activeView !== "expectations" && activeView !== "ideal-day" ? (
+              {activeView !== "companion" && activeView !== "nutrition" && activeView !== "locations" && activeView !== "expectations" && activeView !== "ideal-day" ? (
                 <button
                   type="button"
                   onClick={() => setIsTaskModalOpen(true)}
@@ -2211,6 +2075,7 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
               ) : null}
             </div>
           </div>
+          )}
 
           {activeView === "companion" ? (
             <CompanionView
@@ -2231,16 +2096,15 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
                 <button
                   type="button"
                   onClick={() => setSelectedSubjectId(null)}
-                  className="rounded-xl border border-[#344d6c] px-4 py-2.5 text-sm font-bold text-[#afbed3] transition hover:bg-[#16283f] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                  className={ui.button}
                 >
                   ← Volver al horizonte
                 </button>
               ) : null}
               {subjectViewMode === "folders" || !selectedSubject ? (
-                <div className="rounded-2xl border border-[#293f5e] bg-[#0d1a2a] p-4 shadow-[0_16px_45px_rgba(0,0,0,0.14)] sm:p-5">
+                <div className={`${ui.panel} p-4 sm:p-5`}>
                   <div className="mb-4">
-                    <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#7185a3]">Explorador</p>
-                    <h3 className="mt-1 text-lg font-black text-[#e9f0fb]">{subjectViewMode === "folders" ? "Carpetas de asuntos" : "Asuntos por horizonte"}</h3>
+                    <h2 className={ui.panelTitle}>{subjectViewMode === "folders" ? "Carpetas de asuntos" : "Asuntos por horizonte"}</h2>
                   </div>
                   {subjectViewMode === "folders" ? (
                     <SubjectFolderBrowser
@@ -2272,15 +2136,12 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
                 <div className="min-w-0 space-y-6">
                   {selectedSubject ? (
                     <>
-                      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#315177] bg-[linear-gradient(135deg,#10233a,#0d1a2a)] px-4 py-4 shadow-[0_14px_35px_rgba(0,0,0,0.14)] sm:px-5">
+                      <div className={`${ui.panel} flex flex-wrap items-center justify-between gap-4 p-4 sm:px-5`}>
                         <div className="min-w-0">
-                          <p className="font-mono text-[10px] font-black uppercase tracking-[0.16em] text-[#82afff]">
-                            Detalle del asunto
-                          </p>
-                          <h3 className="mt-1 truncate text-xl font-black tracking-[-0.02em] text-[#f4f7fc]">
+                          <h2 className={`${ui.panelTitle} wrap-anywhere`}>
                             {getSubjectPath(workspace.subjects, selectedSubject.id)}
-                          </h3>
-                          <p className="mt-2 text-sm text-[#aebbd0]">
+                          </h2>
+                          <p className="mt-1 text-sm text-(--workspace-muted)">
                             {getHorizonLabel(selectedSubject.horizon)} · Pendientes: {visibleTasks.filter(isActiveTask).length} · Completadas: {visibleTasks.filter((task) => task.status === "completed").length}
                           </p>
                         </div>
@@ -2288,14 +2149,14 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
                           <button
                             type="button"
                             onClick={() => setIsSubjectEditModalOpen(true)}
-                            className="rounded-xl border border-[#3a5578] px-4 py-2.5 text-sm font-bold text-[#c1cee2] transition hover:bg-[#182a42] focus:outline-none focus:ring-2 focus:ring-[#82afff]/30"
+                            className={ui.button}
                           >
                             Editar asunto
                           </button>
                           <button
                             type="button"
                             onClick={() => setIsTaskModalOpen(true)}
-                            className="rounded-xl border border-[#82afff] bg-[#82afff] px-4 py-2.5 text-sm font-black text-[#07111f] transition hover:-translate-y-0.5 hover:bg-[#a8c7ff] focus:outline-none focus:ring-2 focus:ring-[#82afff]/40"
+                            className={`${ui.button} ${ui.primary}`}
                           >
                             Nueva tarea
                           </button>
@@ -2303,10 +2164,11 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
                       </div>
                     </>
                   ) : null}
-                  <section aria-label="Tareas del asunto" className="space-y-3">
-                    {selectedSubject ? <h4 className="text-base font-black text-[#e9f0fb]">Tareas del asunto</h4> : null}
+                  {selectedSubject ? <section aria-labelledby="managed-subject-tasks" className={`${ui.panel} space-y-3 p-4`}>
+                    <h3 id="managed-subject-tasks" className={ui.panelTitle}>Tareas del asunto</h3>
+                    {visibleTasks.length > 0 ? planningSearch : null}
                     {filteredTaskItems.length === 0 ? (
-                      <TaskEmptyState label={emptyLabel} hint={hasSearch ? "Prueba con otro término o limpia la búsqueda." : selectedSubject ? "Crea una tarea para empezar a mover este asunto." : "Selecciona un asunto de la lista para ver su trabajo."} />
+                      <p className="py-3 text-sm text-(--workspace-muted)">{hasSearch ? "No hay tareas que coincidan." : "Este asunto todavía no tiene tareas."}</p>
                     ) : (
                       filteredTaskItems.map(({ task, depth }) => (
                         <TaskRow
@@ -2321,7 +2183,7 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
                         />
                       ))
                     )}
-                  </section>
+                  </section> : null}
                   {selectedSubject ? (
                     <>
                       <SubjectDeliverableSection
@@ -2369,7 +2231,6 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
               onAddEvent={workspace.addSubjectEvent}
               onPatchEvent={workspace.updateSubjectEvent}
               onDeleteEvent={workspace.deleteSubjectEvent}
-              onOpenSubject={(subjectId) => navigateToView("subjects", subjectId)}
             />
           ) : (
             <div className="space-y-3">

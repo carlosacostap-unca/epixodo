@@ -29,8 +29,13 @@ export function planningTaskHref(
   return params.size ? href + (href.includes("?") ? "&" : "?") + params : href;
 }
 
-export function subjectManagementHref(subjectId?: string) {
+export function subjectManagementHref(subjectId?: string, {
+  explorer = "horizonte", taskFilter = "activas", returnEntryId,
+}: { explorer?: SubjectExplorerMode; taskFilter?: SubjectTaskFilter; returnEntryId?: string } = {}) {
   const params = new URLSearchParams({ vista: "gestion" });
   if (subjectId) params.set("asunto", subjectId);
+  if (explorer !== "horizonte") params.set("explorador", explorer);
+  if (taskFilter !== "activas") params.set("filtro", taskFilter);
+  if (returnEntryId) params.set("desdeEntrada", returnEntryId);
   return "/planificacion?" + params;
 }

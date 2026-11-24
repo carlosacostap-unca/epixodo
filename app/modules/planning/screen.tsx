@@ -6,10 +6,11 @@ import { useEffect, useRef, useState } from "react";
 import ViewIcon from "../../components/view-icon";
 import { useWorkspace, WorkspaceLoading } from "../../components/workspace-provider";
 import ui from "../../components/workspace-screen.module.css";
-import { inboxHref, planningViews, workspaceHref } from "../../lib/module-navigation";
+import { inboxHref, workspaceHref } from "../../lib/module-navigation";
 import { getHorizonLabel, getSubjectPath, taskTreeItems, type Subject, type SubjectHorizon } from "../../lib/tasks";
 import { PlanningHorizonBoard, SubjectHorizonExplorer } from "./horizon-explorer";
 import { planningTaskHref, subjectManagementHref, type PlanningView, type SubjectExplorerMode, type SubjectTaskFilter } from "./navigation";
+import PlanningTabs from "./planning-tabs";
 import { planningHorizons } from "./subject-horizons";
 import { TaskCreateModal, TaskEditModal } from "./task-forms";
 import { formatDate, getStatusLabel, getSubjectTreeItems, taskMatchesQuery } from "./task-ui";
@@ -166,7 +167,7 @@ export default function PlanningScreen({ view, explorer, taskFilter = "activas",
           <div className={ui.heading}>
             <h1 className={`${ui.title} ${styles.title}`}>Planificación</h1>
             <div className={styles.headerActions}>
-              <Link href={subjectManagementHref(subject?.id)} className={styles.actionLink}>Gestionar asuntos</Link>
+              <Link href={subjectManagementHref(subject?.id, { explorer, taskFilter, returnEntryId })} className={styles.actionLink}>Gestionar asuntos</Link>
               {canCreate ? (
                 <button type="button" onClick={() => setCreating(true)} className={`${ui.button} ${ui.primary}`}>
                   <span aria-hidden="true" className="text-lg leading-none">+</span> Nueva tarea
@@ -175,22 +176,7 @@ export default function PlanningScreen({ view, explorer, taskFilter = "activas",
 
             </div>
           </div>
-          <nav aria-label="Vistas de Planificación" className={`${ui.tabs} ${styles.tabs}`}>
-            {planningViews.map((destination) => (
-              <Link
-                key={destination}
-                href={workspaceHref(destination)}
-                aria-current={destination === view ? "page" : undefined}
-                className={`${ui.tab} ${styles.tab}`}
-              >
-                <ViewIcon view={destination} />
-                {labels[destination]}
-                {destination === "unassigned" && planning.views.unassigned.length > 0 ? (
-                  <span className={styles.tabCount}>{planning.views.unassigned.length}</span>
-                ) : null}
-              </Link>
-            ))}
-          </nav>
+          <PlanningTabs view={view} unassigned={planning.views.unassigned.length} />
         </header>
 
         {showBack ? (
