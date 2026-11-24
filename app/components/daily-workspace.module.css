@@ -1,0 +1,70 @@
+.screen {
+  --accent: #bcefd9;
+}
+
+.screen .dayLink {
+  border-color: var(--workspace-control-border);
+  background: var(--workspace-selection);
+}
+
+.screen .dayLink:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 19%, var(--workspace-surface));
+}
+
+.screen .taskRow {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  inline-size: auto;
+  border-color: var(--workspace-border);
+  border-radius: var(--workspace-radius);
+  color: var(--workspace-ink);
+  background: var(--workspace-inset);
+  box-shadow: none;
+  transform: none;
+  translate: none;
+}
+
+.screen .taskMarker {
+  display: none;
+}
+
+.screen .taskToggle {
+  display: grid;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  place-items: center;
+  border: 1px solid var(--workspace-control-border);
+  border-radius: 0.5rem;
+  color: var(--accent);
+  background: var(--workspace-surface);
+}
+
+.screen .taskToggle input {
+  accent-color: var(--accent);
+}
+
+.screen .taskDetail {
+  min-block-size: 2.75rem;
+}
+
+.screen .taskDetail:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.screen .taskTitle {
+  color: inherit;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.screen .taskMeta {
+  color: var(--workspace-muted);
+}
+
+.screen .reviewLink {
+  grid-column: 2;
+  color: var(--accent);
+}

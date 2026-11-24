@@ -11,8 +11,10 @@ import LocationsView from "./locations-view";
 import ExpectationsView from "./expectations-view";
 import IdealDayView from "./ideal-day-view";
 import CompanionView from "./companion-view";
-import TodayOverview, { getTodayOverviewCount } from "./today-overview";
+import TodayOverview from "./today-overview";
 import ViewIcon from "./view-icon";
+import dailyStyles from "./daily-workspace.module.css";
+import ui from "./workspace-screen.module.css";
 import { TaskCreateModal, TaskEditModal } from "../modules/planning/task-forms";
 import { formatDate, getStatusLabel, getPriorityLabel, taskMatchesQuery, sortedSubjects, TaskEmptyState, TaskBadge, FieldLabel, SubjectChips, controlClass } from "../modules/planning/task-ui";
 import {
@@ -60,9 +62,8 @@ const viewLabels: Record<ViewKey, string> = {
   expectations: "Esperas",
 };
 
-const viewDescriptions: Record<ViewKey, string> = {
+const viewDescriptions: Record<Exclude<ViewKey, "today">, string> = {
   companion: "Un lugar para pensar en voz alta, contar cómo viene el día y retomar cada conversación cuando quieras.",
-  today: "Lo que requiere atención en esta fecha.",
   "ideal-day": "Elegí una fecha y definí los objetivos que querés lograr ese día.",
   upcoming: "El trabajo que se acerca en los próximos días.",
   unassigned: "Tareas revisadas que todavía no tienen asunto.",
@@ -74,6 +75,8 @@ const viewDescriptions: Record<ViewKey, string> = {
   locations: "Planificá dónde debés estar y registrá tu recorrido real, día a día y por horario.",
   expectations: "Entregas, respuestas y novedades que dependen de otros y querés confirmar cuando llegue el día.",
 };
+
+const todayDate = new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
 function PhaseChip({ phase }: { phase: SubjectPhase | null }) {
   if (!phase) {
@@ -133,33 +136,33 @@ function TaskRow({
 
   return (
     <article
-      className="group grid w-full gap-3 rounded-2xl border border-[#293b57] bg-[#142338] p-3 text-left shadow-[0_1px_0_rgba(255,255,255,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-[#466188] hover:bg-[#182a42] hover:shadow-[0_14px_35px_rgba(0,0,0,0.18)] sm:grid-cols-[4px_auto_minmax(0,1fr)] sm:p-4"
+      className={`${dailyStyles.taskRow} group grid w-full gap-3 rounded-2xl border border-[#293b57] bg-[#142338] p-3 text-left shadow-[0_1px_0_rgba(255,255,255,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-[#466188] hover:bg-[#182a42] hover:shadow-[0_14px_35px_rgba(0,0,0,0.18)] sm:grid-cols-[4px_auto_minmax(0,1fr)] sm:p-4`}
       style={{ marginLeft: depth ? `${Math.min(depth, 4) * 18}px` : undefined }}
     >
       <div
-        className={`hidden rounded-full sm:block ${
+        className={`${dailyStyles.taskMarker} hidden rounded-full sm:block ${
           isCompleted ? "bg-[#45546d]" : depth > 0 ? "bg-[#f6c177]" : "bg-[#8ab4f8]"
         }`}
       />
       {task.aiSuggestion ? (
-        <span aria-label="Entrada pendiente de procesar" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#3f6b73] bg-[#0c2530] font-mono text-sm font-black text-[#7fd8d0] sm:mt-0.5">↧</span>
+        <span aria-label="Entrada pendiente de procesar" className={`${dailyStyles.taskToggle} flex h-9 w-9 items-center justify-center rounded-xl border border-[#3f6b73] bg-[#0c2530] font-mono text-sm font-black text-[#7fd8d0] sm:mt-0.5`}>↧</span>
       ) : (
-        <label className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#38506f] bg-[#0b1726] sm:mt-0.5">
+        <label className={`${dailyStyles.taskToggle} flex h-9 w-9 items-center justify-center rounded-xl border border-[#38506f] bg-[#0b1726] sm:mt-0.5`}>
           <input type="checkbox" checked={isCompleted} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} onChange={(event) => onStatus(task.id, event.target.checked ? "completed" : "pending")} aria-label={`Completar ${task.title}`} className="h-4 w-4 accent-[#8ab4f8]" />
         </label>
       )}
 
-      <button type="button" onClick={() => onOpen(task.id)} className="min-w-0 space-y-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#82afff]/50">
+      <button type="button" onClick={() => onOpen(task.id)} className={`${dailyStyles.taskDetail} min-w-0 space-y-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#82afff]/50`}>
         <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
             <span
-              className={`block w-full min-w-0 truncate text-base font-semibold text-[#eef4ff] ${
+              className={`${dailyStyles.taskTitle} block w-full min-w-0 truncate text-base font-semibold text-[#eef4ff] ${
                 isCompleted ? "line-through opacity-55" : ""
               }`}
             >
               {task.title}
             </span>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#91a0bb]">
+            <div className={`${dailyStyles.taskMeta} mt-2 flex flex-wrap items-center gap-2 text-xs text-[#91a0bb]`}>
               {task.aiSuggestion ? <span>Entrada capturada</span> : depth > 0 ? <span>Subtarea</span> : <span>Tarea raíz</span>}
               {task.hacerEl ? <span>Hacer {formatDate(task.hacerEl)}</span> : null}
               {task.venceEl ? <span>Vence {formatDate(task.venceEl)}</span> : null}
@@ -180,12 +183,12 @@ function TaskRow({
         <SubjectChips subjects={subjects} subjectIds={task.subjectIds} />
         <PhaseChip phase={phase} />
         {task.notes ? (
-          <p className="line-clamp-1 text-sm text-[#9aa8c3]">{task.notes}</p>
+          <p className={`${dailyStyles.taskMeta} line-clamp-1 text-sm text-[#9aa8c3]`}>{task.notes}</p>
         ) : null}
         <span className="sr-only">Abrir detalle de {task.title}</span>
       </button>
       {!isCompleted && task.aiSuggestion ? (
-        <Link href={workspaceHref("inbox")} className="text-sm font-semibold text-[#a8c7ff] underline underline-offset-4 sm:col-start-3">Revisar en Bandeja</Link>
+        <Link href={workspaceHref("inbox")} className={`${dailyStyles.reviewLink} text-sm font-semibold text-[#a8c7ff] underline underline-offset-4 sm:col-start-3`}>Revisar en Bandeja</Link>
       ) : null}
     </article>
   );
@@ -2016,7 +2019,6 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
 
   const navItems: { key: ViewKey; count: number }[] = [
     { key: "companion", count: companionConversationCount },
-    { key: "today", count: getTodayOverviewCount(workspace) },
     { key: "ideal-day", count: workspace.idealDayGoals.filter((goal) => goal.date === workspace.today && !goal.completed).length },
     { key: "upcoming", count: workspace.planning.views.upcoming.length },
     { key: "unassigned", count: workspace.planning.views.unassigned.length },
@@ -2052,9 +2054,48 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
   if (!workspace.isLoaded) return <WorkspaceLoading />;
 
   return (
-    <main className="relative flex-1 overflow-x-hidden bg-[#07111d] text-[#eaf1fb]">
-      <div aria-hidden="true" className="app-grid pointer-events-none absolute inset-0" />
+    <main className={activeView === "today" ? `${ui.screen} ${dailyStyles.screen}` : "relative flex-1 overflow-x-hidden bg-[#07111d] text-[#eaf1fb]"}>
+      {activeView === "today" ? (
+        <div className={ui.frame}>
+          <header className={`${ui.header} grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 pb-4 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end`}>
+            <div className="grid gap-2">
+              <h1 className={ui.title}>Hoy</h1>
+              <time dateTime={workspace.today} className="text-sm text-(--workspace-muted) first-letter:uppercase">
+                {todayDate.format(new Date(`${workspace.today}T12:00:00`))}
+              </time>
+            </div>
+            <button type="button" onClick={() => setIsTaskModalOpen(true)} className={`${ui.button} ${ui.primary}`}>
+              <span aria-hidden="true">+</span> Crear tarea
+            </button>
+            <div className="col-span-2 flex min-w-0 flex-wrap items-end gap-2 md:col-span-1">
+              <label className={`${ui.label} min-w-36 flex-1 md:w-56 lg:w-64`}>
+                Buscar en Hoy
+                <input ref={searchRef} type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} aria-keyshortcuts="/" className={`${ui.control} w-full px-3`} />
+              </label>
+              {hasSearch ? <button type="button" onClick={() => { setSearchQuery(""); searchRef.current?.focus(); }} className={ui.button}>Limpiar búsqueda</button> : null}
+            </div>
+          </header>
+          <TodayOverview
+            workspace={workspace}
+            searchQuery={searchQuery}
+            taskCount={filteredTaskItems.length}
+            taskContent={filteredTaskItems.map(({ task, depth }) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                subjects={workspace.subjects}
+                phases={workspace.phases}
+                depth={depth}
+                today={workspace.today}
+                onStatus={workspace.planning.setTaskStatus}
+                onOpen={setSelectedTaskId}
+              />
+            ))}
+          />
+        </div>
+      ) : (
       <div className="relative min-w-0">
+        <div aria-hidden="true" className="app-grid pointer-events-none absolute inset-0" />
         {localNavigation.length > 1 ? (
           <nav aria-label="Vistas del módulo" className="border-b border-[#20334d] bg-[#0b1624]">
             <div className="mx-auto flex max-w-[1500px] flex-wrap gap-x-2 gap-y-1 px-4 py-2 md:px-6">
@@ -2095,10 +2136,6 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
               <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#82afff]">
                 {activeView === "companion"
                   ? `${companionConversationCount} ${companionConversationCount === 1 ? "conversación guardada" : "conversaciones guardadas"}`
-                  : activeView === "today"
-                  ? hasSearch
-                    ? `${filteredTasks.length} tareas coinciden en una agenda de ${getTodayOverviewCount(workspace)} acciones`
-                    : `${getTodayOverviewCount(workspace)} ${getTodayOverviewCount(workspace) === 1 ? "acción" : "acciones"} entre todas tus secciones`
                   : activeView === "nutrition"
                   ? `${workspace.nutritionPlanItems.filter((item) => item.date === workspace.today).length} comidas planificadas hoy`
                   : activeView === "locations"
@@ -2179,31 +2216,6 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
             <CompanionView
               searchQuery={searchQuery}
               onConversationCountChange={setCompanionConversationCount}
-            />
-          ) : activeView === "today" ? (
-            <TodayOverview
-              workspace={workspace}
-              searchQuery={searchQuery}
-              taskCount={filteredTaskItems.length}
-              taskContent={filteredTaskItems.length === 0 ? (
-                <TaskEmptyState
-                  label={hasSearch ? "No hay tareas que coincidan." : "No hay tareas fechadas para hoy."}
-                  hint={hasSearch ? "Las otras secciones de la agenda también respetan esta búsqueda." : "El resto de tu agenda sigue visible debajo."}
-                />
-              ) : filteredTaskItems.map(({ task, depth }) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  subjects={workspace.subjects}
-                  phases={workspace.phases}
-                  depth={depth}
-                  today={workspace.today}
-                  onStatus={workspace.planning.setTaskStatus}
-                  onOpen={setSelectedTaskId}
-                />
-              ))}
-              onNavigate={navigateToView}
-              onOpenSubject={(subjectId) => navigateToView("subjects", subjectId)}
             />
           ) : activeView === "locations" ? (
             <LocationsView workspace={workspace} searchQuery={searchQuery} />
@@ -2382,6 +2394,7 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
         </section>
       </div>
       </div>
+      )}
       <TaskCreateModal
         key={`create-task-${defaultTaskSubjectIds.join("|")}-${newTaskDeliverableId ?? "none"}`}
         isOpen={isTaskModalOpen}
@@ -2404,7 +2417,8 @@ export default function TaskManager({ activeView, tabs, initialSubjectId }: {
         phases={workspace.phases}
         today={workspace.today}
         onPatch={workspace.planning.patchTask}
-        onAssignSubjects={workspace.planning.assignTaskSubjects}        onDelete={workspace.planning.deleteTask}
+        onAssignSubjects={workspace.planning.assignTaskSubjects}
+        onDelete={workspace.planning.deleteTask}
         onClose={() => setSelectedTaskId(null)}
         getAvailableParentTasksForTask={workspace.planning.getAvailableParentTasksForTask}
       />
