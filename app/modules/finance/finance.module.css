@@ -1,0 +1,10 @@
+.finance {
+  --accent: #d8bdf9;
+  --finance-income: #83dfb8;
+  --finance-expense: #ffaaa0;
+}
+
+.account:hover {
+  border-color: var(--workspace-control-border);
+  background: var(--workspace-hover);
+}

@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useId, useRef, useState } from "react";
+import ui from "../../components/workspace-screen.module.css";
+import styles from "./finance.module.css";
 import { paymentExpenseId, type FinanceWorkspace } from "./workspace";
 import {
   financeAccountTypes,
@@ -19,8 +21,16 @@ import {
   type FinanceDuePaymentDraft,
 } from "../../lib/finance";
 
-const financeControlClass =
-  "h-11 w-full rounded-xl border border-[#324968] bg-[#091522] px-3 text-sm text-[#e8eef8] outline-none transition placeholder:text-[#61708d] focus:border-[#d8bdf9] focus:ring-2 focus:ring-[#d8bdf9]/15";
+const financeControlClass = `${ui.control} w-full px-3`;
+const primaryButtonClass = `${ui.button} ${ui.primary}`;
+const dangerButtonClass = `${ui.button} ${ui.danger}`;
+const statusClass = "w-fit rounded-md border px-2 py-1 text-xs font-semibold";
+const paymentStatus = {
+  overdue: { label: "Vencido", style: "border-[#864a3e] bg-[#331b18] text-(--finance-expense)" },
+  today: { label: "Vence hoy", style: "border-[#8a682f] bg-[#382a14] text-[#ffd17c]" },
+  paid: { label: "Pagado", style: "border-[#366c58] bg-[#142c25] text-(--finance-income)" },
+  upcoming: { label: "Pendiente", style: "border-(--workspace-control-border) bg-(--workspace-inset) text-(--workspace-muted)" },
+};
 
 function FinanceField({
   label,
@@ -32,10 +42,10 @@ function FinanceField({
   children: React.ReactNode;
 }) {
   return (
-    <label className="grid gap-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#bba9ce]">
+    <label className={ui.label}>
       {label}
       {children}
-      {hint ? <span className="text-[11px] font-medium normal-case tracking-normal text-[#6f819e]">{hint}</span> : null}
+      {hint ? <span className="text-xs font-normal">{hint}</span> : null}
     </label>
   );
 }
@@ -66,13 +76,13 @@ function FinanceModal({
   }, []);
 
   return (
-    <dialog ref={dialogRef} onCancel={(event) => { event.preventDefault(); onClose(); }} className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-2xl border border-[#574968] bg-[#201a2e] text-[#f0ebfc] shadow-2xl backdrop:bg-[#030811]/80" aria-labelledby={titleId}>
-        <div className="flex items-center justify-between gap-4 border-b border-[#41374f] px-5 py-4">
-          <div>
-            <p className="font-mono text-[10px] font-black uppercase tracking-[0.18em] text-[#d8bdf9]">{eyebrow}</p>
-            <h3 id={titleId} className="mt-1 text-xl font-black tracking-[-0.02em] text-[#f2f6fc]">{title}</h3>
+    <dialog ref={dialogRef} onCancel={(event) => { event.preventDefault(); onClose(); }} className={`${ui.dialog} m-auto w-[calc(100%-2rem)] max-w-xl border shadow-2xl backdrop:bg-[#050812]/75`} aria-labelledby={titleId}>
+        <div className="flex items-center justify-between gap-4 border-b border-(--workspace-border) px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-(--accent)">{eyebrow}</p>
+            <h2 id={titleId} className={`${ui.panelTitle} mt-1 wrap-anywhere`}>{title}</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#344c6d] text-lg font-bold text-[#b5c2d7] transition hover:bg-[#17283e]">×</button>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className={`${ui.button} ${ui.iconButton} shrink-0`}>×</button>
         </div>
         {children}
     </dialog>
@@ -141,12 +151,12 @@ function AccountForm({
       <FinanceField label="Saldo inicial" hint="Puede ser negativo; admite hasta dos decimales.">
         <input inputMode="decimal" value={openingBalance} onChange={(event) => setOpeningBalance(event.target.value)} className={`${financeControlClass} font-mono`} />
       </FinanceField>
-      {error ? <p role="alert" className="rounded-xl border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm font-semibold text-[#ff9d88]">{error}</p> : null}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#41374f] pt-4">
-        {onDelete ? <button type="button" onClick={onDelete} className="rounded-xl border border-[#713d3a] px-4 py-2.5 text-sm font-bold text-[#ff9d88] transition hover:bg-[#2e1716]">Eliminar cuenta</button> : <span />}
-        <div className="flex gap-2">
-          <button type="button" onClick={onClose} className="rounded-xl border border-[#344c6d] px-4 py-2.5 text-sm font-bold text-[#b8c5d9] transition hover:bg-[#17283e]">Cancelar</button>
-          <button type="submit" className="rounded-xl bg-[#d8bdf9] px-4 py-2.5 text-sm font-black text-[#07111f] transition hover:bg-[#a8c7ff]">Guardar cuenta</button>
+      {error ? <p role="alert" className="rounded-lg border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm text-(--finance-expense)">{error}</p> : null}
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-(--workspace-border) pt-4">
+        {onDelete ? <button type="button" onClick={onDelete} className={`${dangerButtonClass} mr-auto`}>Eliminar cuenta</button> : null}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onClose} className={ui.button}>Cancelar</button>
+          <button type="submit" className={primaryButtonClass}>Guardar cuenta</button>
         </div>
       </div>
     </form>
@@ -206,9 +216,9 @@ function EntryForm({
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4 p-5">
-        {!payment ? <div className="grid grid-cols-2 rounded-xl border border-[#304865] bg-[#091522] p-1">
+        {!payment ? <div role="group" aria-label="Tipo de movimiento" className="grid w-fit grid-cols-2 gap-1 border-b border-(--workspace-border)">
         {(["expense", "income"] as const).map((value) => (
-          <button key={value} type="button" onClick={() => setKind(value)} className={`h-10 rounded-lg text-sm font-black transition ${kind === value ? value === "income" ? "bg-[#63d3a5] text-[#071b14]" : "bg-[#ff927d] text-[#28100d]" : "text-[#9aacbf] hover:bg-[#15263b]"}`}>
+          <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)} className={`${ui.tab} justify-center`}>
             {value === "income" ? "Ingreso" : "Egreso"}
           </button>
         ))}
@@ -232,10 +242,10 @@ function EntryForm({
       <FinanceField label="Categoría" hint="Opcional">
         <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Comida, trabajo, vivienda…" className={financeControlClass} />
       </FinanceField>
-      {error ? <p role="alert" className="rounded-xl border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm font-semibold text-[#ff9d88]">{error}</p> : null}
-      <div className="flex justify-end gap-2 border-t border-[#41374f] pt-4">
-        <button type="button" onClick={onClose} className="rounded-xl border border-[#344c6d] px-4 py-2.5 text-sm font-bold text-[#b8c5d9] transition hover:bg-[#17283e]">Cancelar</button>
-        <button type="submit" className={`rounded-xl px-4 py-2.5 text-sm font-black transition ${kind === "income" ? "bg-[#63d3a5] text-[#071b14] hover:bg-[#8ce3bf]" : "bg-[#ff927d] text-[#28100d] hover:bg-[#ffb09f]"}`}>Guardar {kind === "income" ? "ingreso" : "egreso"}</button>
+      {error ? <p role="alert" className="rounded-lg border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm text-(--finance-expense)">{error}</p> : null}
+      <div className="flex flex-wrap justify-end gap-2 border-t border-(--workspace-border) pt-4">
+        <button type="button" onClick={onClose} className={ui.button}>Cancelar</button>
+        <button type="submit" className={primaryButtonClass}>Guardar {kind === "income" ? "ingreso" : "egreso"}</button>
       </div>
     </form>
   );
@@ -331,10 +341,10 @@ function DuePaymentForm({
       <FinanceField label="Categoría" hint="Opcional">
         <input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Vivienda, servicios, impuestos…" className={financeControlClass} />
       </FinanceField>
-      {error ? <p role="alert" className="rounded-xl border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm font-semibold text-[#ff9d88]">{error}</p> : null}
-      <div className="flex justify-end gap-2 border-t border-[#41374f] pt-4">
-        <button type="button" onClick={onClose} className="rounded-xl border border-[#344c6d] px-4 py-2.5 text-sm font-bold text-[#b8c5d9] transition hover:bg-[#17283e]">Cancelar</button>
-        <button type="submit" className="rounded-xl bg-[#f4c36a] px-4 py-2.5 text-sm font-black text-[#281b05] transition hover:bg-[#ffda8c]">Guardar pago</button>
+      {error ? <p role="alert" className="rounded-lg border border-[#7a3d32] bg-[#2e1716] px-3 py-2 text-sm text-(--finance-expense)">{error}</p> : null}
+      <div className="flex flex-wrap justify-end gap-2 border-t border-(--workspace-border) pt-4">
+        <button type="button" onClick={onClose} className={ui.button}>Cancelar</button>
+        <button type="submit" className={primaryButtonClass}>Guardar pago</button>
       </div>
     </form>
   );
@@ -404,88 +414,91 @@ export default function FinanceView({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div role="group" aria-label="Registrar en Finanzas" className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-          <button type="button" onClick={() => setAccountModalId("new")} className="rounded-xl border border-[#6e587f] px-4 py-2.5 text-sm font-bold text-[#ded3e9] transition hover:bg-[#342742]">+ Cuenta</button>
-          <button type="button" onClick={() => setDuePaymentModalId("new")} className="rounded-xl border border-[#7d6330] bg-[#2c2415] px-4 py-2.5 text-sm font-black text-[#f4c36a] transition hover:-translate-y-0.5 hover:bg-[#3a2e19]">+ Pago pendiente</button>
-          <button type="button" disabled={finance.accounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "expense" })} className="rounded-xl border border-[#ff927d] bg-[#ff927d] px-4 py-2.5 text-sm font-black text-[#28100d] transition hover:-translate-y-0.5 hover:bg-[#ffb09f]">− Egreso</button>
-          <button type="button" disabled={finance.accounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "income" })} className="rounded-xl border border-[#63d3a5] bg-[#63d3a5] px-4 py-2.5 text-sm font-black text-[#071b14] transition hover:-translate-y-0.5 hover:bg-[#8ce3bf]">+ Ingreso</button>
+        <button type="button" onClick={() => setAccountModalId("new")} className={ui.button}>+ Cuenta</button>
+        <button type="button" onClick={() => setDuePaymentModalId("new")} className={ui.button}>+ Pago pendiente</button>
+        <button type="button" disabled={finance.accounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "expense" })} className={ui.button}>− Egreso</button>
+        <button type="button" disabled={finance.accounts.length === 0} onClick={() => setEntryModal({ id: null, kind: "income" })} className={ui.button}>+ Ingreso</button>
       </div>
 
       {finance.summaries.length > 0 ? (
-        <section aria-labelledby="finance-summary-title" className="overflow-hidden rounded-sm border border-[#514461] border-t-4 border-t-[#d8bdf9] bg-[#1c1828]">
-          <div className="grid gap-3 border-b border-[#41374f] px-4 py-4 sm:flex sm:items-end sm:justify-between sm:px-5">
-            <h2 id="finance-summary-title" className="font-serif text-2xl tracking-tight text-[#f3eefb]">Saldos por moneda</h2>
-            <p className="font-mono text-xs text-[#aba0bc] first-letter:uppercase">{monthLabel}</p>
+        <section aria-labelledby="finance-summary-title" className={ui.panel}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-(--workspace-border) p-4 sm:px-5">
+            <h2 id="finance-summary-title" className={ui.panelTitle}>Saldos por moneda</h2>
+            <p className="text-sm text-(--workspace-muted) first-letter:uppercase">{monthLabel}</p>
           </div>
-          <div className="divide-y divide-[#41374f]">
+          <div className="divide-y divide-(--workspace-border)">
             {finance.summaries.map((summary) => (
-              <div key={summary.currency} className="grid grid-cols-2 gap-4 px-4 py-5 sm:grid-cols-[72px_repeat(3,minmax(0,1fr))] sm:items-end sm:px-5">
-                <span className="w-fit self-start rounded-lg border border-[#625177] bg-[#302642] px-2.5 py-1 font-mono text-xs font-black tracking-[0.12em] text-[#e1d1fa]">{summary.currency}</span>
-                <div><p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#aba0bc]">Saldo actual</p><p className="mt-1 font-mono text-xl font-black text-[#f3eefb]">{formatMoney(summary.balanceMinor, summary.currency)}</p></div>
-                <div><p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#4fae88]">Ingresos del mes</p><p className="mt-1 font-mono text-lg font-black text-[#63d3a5]">+ {formatMoney(summary.incomeMinor, summary.currency)}</p></div>
-                <div><p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#d57565]">Egresos del mes</p><p className="mt-1 font-mono text-lg font-black text-[#ff927d]">− {formatMoney(summary.expenseMinor, summary.currency)}</p></div>
+              <div key={summary.currency} className="grid items-start gap-3 px-4 py-5 sm:grid-cols-[4rem_minmax(0,1fr)] sm:gap-5 sm:px-5">
+                <span className="w-fit rounded-md bg-(--workspace-selection) px-2 py-1 font-mono text-sm font-semibold text-(--accent)">{summary.currency}</span>
+                <dl className="grid grid-cols-2 gap-3 lg:grid-cols-[1.2fr_1fr_1fr]">
+                  <div className="col-span-2 min-w-0 lg:col-span-1">
+                    <dt className="text-sm text-(--workspace-muted)">Saldo actual</dt>
+                    <dd className="mt-1 wrap-anywhere font-mono text-2xl font-semibold tabular-nums">{formatMoney(summary.balanceMinor, summary.currency)}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-sm text-(--workspace-muted)">Ingresos del mes</dt>
+                    <dd className="mt-1 wrap-anywhere font-mono text-base font-medium text-(--finance-income) tabular-nums">+ {formatMoney(summary.incomeMinor, summary.currency)}</dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-sm text-(--workspace-muted)">Egresos del mes</dt>
+                    <dd className="mt-1 wrap-anywhere font-mono text-base font-medium text-(--finance-expense) tabular-nums">− {formatMoney(summary.expenseMinor, summary.currency)}</dd>
+                  </div>
+                </dl>
               </div>
             ))}
           </div>
         </section>
       ) : (
-        <div className="grid min-h-52 place-items-center rounded-2xl border border-dashed border-[#584a6c] bg-[#231c30]/75 px-6 py-10 text-center"><div className="max-w-sm"><span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-[#65547b] bg-[#352744] font-mono text-[#d8bdf9]">$</span><h3 className="mt-4 text-base font-black text-[#eee4f7]">Tu primer saldo empieza con una cuenta</h3><p className="mt-2 text-sm leading-6 text-[#b2a5c6]">Creá efectivo, banco o billetera y después registrá ingresos y egresos.</p><button type="button" onClick={() => setAccountModalId("new")} className="mt-5 rounded-xl bg-[#d8bdf9] px-4 py-2.5 text-sm font-black text-[#07111f]">Crear primera cuenta</button></div></div>
+        <div className={`${ui.panel} grid min-h-52 place-items-center px-6 py-8 text-center`}>
+          <div className="max-w-sm">
+            <h2 className={ui.panelTitle}>Tu primer saldo empieza con una cuenta</h2>
+            <p className="mt-2 text-sm leading-6 text-(--workspace-muted)">Creá efectivo, banco o billetera y después registrá ingresos y egresos.</p>
+            <button type="button" onClick={() => setAccountModalId("new")} className={`${primaryButtonClass} mt-4`}>Crear primera cuenta</button>
+          </div>
+        </div>
       )}
 
-      <section aria-labelledby="finance-due-payments-title" className="overflow-hidden rounded-sm border border-[#554a32] bg-[linear-gradient(145deg,#231c2a,#231c28)]">
-          <div className="grid gap-3 border-b border-[#514135] px-4 py-4 sm:flex sm:items-end sm:justify-between sm:px-5">
+      <section aria-labelledby="finance-due-payments-title" className={ui.panel}>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-(--workspace-border) p-4 sm:px-5">
             <div>
-              <h2 id="finance-due-payments-title" className="scroll-mt-24 font-serif text-2xl tracking-tight text-[#f3ead8]">Vencimientos</h2>
-              <p className="mt-1 text-xs leading-5 text-[#baab98]">Registrá el egreso para descontar el pago del saldo.</p>
+              <h2 id="finance-due-payments-title" className={`${ui.panelTitle} scroll-mt-24`}>Vencimientos</h2>
+              <p className="mt-1 text-sm text-(--workspace-muted)">Registrá el egreso para descontar el pago del saldo.</p>
             </div>
-            <div className="flex items-center gap-2">
-              {finance.duePaymentCounts.overdue > 0 ? <span className="rounded-lg border border-[#864a3e] bg-[#331b18] px-2.5 py-1 text-xs font-black text-[#ff9d88]">{finance.duePaymentCounts.overdue} {finance.duePaymentCounts.overdue === 1 ? "vencido" : "vencidos"}</span> : null}
-              <span className="rounded-lg border border-[#66532d] bg-[#292315] px-2.5 py-1 font-mono text-xs font-black text-[#f4c36a]">{finance.duePaymentCounts.pending} {finance.duePaymentCounts.pending === 1 ? "pendiente" : "pendientes"}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {finance.duePaymentCounts.overdue > 0 ? <span className={`${statusClass} ${paymentStatus.overdue.style}`}>{finance.duePaymentCounts.overdue} {finance.duePaymentCounts.overdue === 1 ? "vencido" : "vencidos"}</span> : null}
+              <span className={`${statusClass} ${paymentStatus.upcoming.style}`}>{finance.duePaymentCounts.pending} {finance.duePaymentCounts.pending === 1 ? "pendiente" : "pendientes"}</span>
             </div>
           </div>
           {visibleDuePayments.length > 0 ? (
-            <div className="divide-y divide-[#493b36]">
+            <div className="divide-y divide-(--workspace-border)">
               {visibleDuePayments.map((payment) => {
                 const account = payment.accountId ? accountById.get(payment.accountId) : null;
                 const expenseId = finance.entries.find((entry) => entry.id === paymentExpenseId(payment.id))?.id;
                 const hasCompatibleAccount = finance.accounts.some((item) => item.currency === payment.currency);
-                const urgency = getFinanceDuePaymentUrgency(payment, finance.today);
-                const urgencyStyle = urgency === "overdue"
-                  ? "border-[#864a3e] bg-[#331b18] text-[#ff9d88]"
-                  : urgency === "today"
-                    ? "border-[#9b7135] bg-[#382a14] text-[#ffd17c]"
-                    : urgency === "paid"
-                      ? "border-[#366c58] bg-[#142c25] text-[#75dcb1]"
-                      : "border-[#66532d] bg-[#292315] text-[#f4c36a]";
-                const urgencyLabel = urgency === "overdue"
-                  ? "Vencido"
-                  : urgency === "today"
-                    ? "Vence hoy"
-                    : urgency === "paid"
-                      ? "Pagado"
-                      : `Vence ${payment.dueDate.split("-").reverse().join("/")}`;
+                const status = paymentStatus[getFinanceDuePaymentUrgency(payment, finance.today)];
 
                 return (
-                  <article key={payment.id} className={`grid gap-3 px-4 py-4 transition hover:bg-[#30232d] sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-5 ${urgency === "paid" ? "opacity-65" : ""}`}>
+                  <article key={payment.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:items-start sm:px-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,auto)] lg:items-center">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${urgencyStyle}`}>{urgencyLabel}</span>
-                        {payment.category ? <span className="text-xs font-semibold text-[#baab98]">{payment.category}</span> : null}
+                        <span className={`${statusClass} ${status.style}`}>{status.label}</span>
+                        {payment.category ? <span className="wrap-anywhere text-xs text-(--workspace-muted)">{payment.category}</span> : null}
                       </div>
-                      <p className={`mt-2 truncate text-sm font-black text-[#f1eadc] ${urgency === "paid" ? "line-through" : ""}`}>{payment.description}</p>
-                      <p className="mt-1 truncate text-xs text-[#baab98]">{account?.name ?? "Sin cuenta definida"} · {payment.dueDate.split("-").reverse().join("/")}</p>
+                      <p className="mt-2 wrap-anywhere text-sm font-semibold">{payment.description}</p>
+                      <p className="mt-1 wrap-anywhere text-xs text-(--workspace-muted)">{account?.name ?? "Sin cuenta definida"} · <time dateTime={payment.dueDate}>{payment.dueDate.split("-").reverse().join("/")}</time></p>
                     </div>
-                    <p className={`font-mono text-base font-black ${urgency === "overdue" ? "text-[#ff9d88]" : "text-[#f3ead8]"}`}>{formatMoney(payment.amountMinor, payment.currency)}</p>
-                    <div className="flex flex-wrap gap-1 sm:justify-end">
+                    <p className="wrap-anywhere font-mono text-base font-semibold tabular-nums sm:text-right">{formatMoney(payment.amountMinor, payment.currency)}</p>
+                    <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-1 lg:justify-end">
                       {payment.status === "paid" && (hasCompatibleAccount || expenseId) ? (
-                        <button type="button" className="min-h-11 rounded-lg border border-[#6e587f] px-2.5 text-xs font-bold text-[#e1d1fa] hover:bg-[#342742]" onClick={() => setEntryModal({ id: expenseId ?? null, kind: "expense", payment })}>
+                        <button type="button" className={expenseId ? ui.button : primaryButtonClass} onClick={() => setEntryModal({ id: expenseId ?? null, kind: "expense", payment })}>
                           {expenseId ? "Ver egreso" : "Registrar egreso"}
                         </button>
                       ) : null}
-                      <button type="button" onClick={() => finance.setDuePaymentStatus(payment.id, payment.status === "paid" ? "pending" : "paid")} className={`rounded-lg border px-2.5 py-1.5 text-xs font-black transition ${payment.status === "paid" ? "border-[#4b5c71] text-[#b8c5d9] hover:bg-[#332743]" : "border-[#366c58] text-[#75dcb1] hover:bg-[#142c25]"}`}>{payment.status === "paid" ? "Volver a pendiente" : "Marcar pagado"}</button>
-                      <button type="button" onClick={() => setDuePaymentModalId(payment.id)} className="rounded-lg border border-[#4b4b46] px-2.5 py-1.5 text-xs font-bold text-[#c1b8a8] transition hover:bg-[#292923]">Editar</button>
-                      <button type="button" onClick={() => confirmDuePaymentDelete(payment)} className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-bold text-[#d98276] transition hover:border-[#713d3a] hover:bg-[#2e1716]">Eliminar</button>
+                      <button type="button" onClick={() => finance.setDuePaymentStatus(payment.id, payment.status === "paid" ? "pending" : "paid")} className={ui.button}>{payment.status === "paid" ? "Volver a pendiente" : "Marcar pagado"}</button>
+                      <button type="button" onClick={() => setDuePaymentModalId(payment.id)} className={ui.button}>Editar</button>
+                      <button type="button" onClick={() => confirmDuePaymentDelete(payment)} className={dangerButtonClass}>Eliminar</button>
                     </div>
                   </article>
                 );
@@ -493,25 +506,34 @@ export default function FinanceView({
             </div>
           ) : (
             <div className="px-5 py-9 text-center">
-              <p className="text-sm text-[#b8a997]">{normalizedQuery ? "No hay pagos que coincidan con la búsqueda." : "Todavía no tenés pagos pendientes cargados."}</p>
-              {!normalizedQuery ? <button type="button" onClick={() => setDuePaymentModalId("new")} className="mt-4 rounded-xl border border-[#7d6330] bg-[#2c2415] px-4 py-2.5 text-sm font-black text-[#f4c36a] transition hover:bg-[#3a2e19]">Anotar un pago</button> : null}
+              <p className="text-sm text-(--workspace-muted)">{normalizedQuery ? "No hay pagos que coincidan con la búsqueda." : "Todavía no tenés pagos pendientes cargados."}</p>
+              {!normalizedQuery ? <button type="button" onClick={() => setDuePaymentModalId("new")} className={`${ui.button} mt-4`}>Anotar un pago</button> : null}
             </div>
           )}
       </section>
 
       {finance.accounts.length > 0 ? (
         <section aria-labelledby="finance-accounts-title">
-          <div className="mb-3 flex items-center justify-between"><h2 id="finance-accounts-title" className="font-serif text-2xl tracking-tight text-[#f3eefb]">Cuentas</h2><span className="font-mono text-xs text-[#aba0bc]">{finance.accounts.length}</span></div>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 id="finance-accounts-title" className={ui.panelTitle}>Cuentas</h2>
+            <span className="font-mono text-xs text-(--workspace-muted)">{finance.accounts.length}</span>
+          </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {finance.accounts.map((account) => {
               const balance = finance.balances.get(account.id) ?? account.openingBalanceMinor;
               const count = finance.entries.filter((entry) => entry.accountId === account.id).length;
               return (
-                <button key={account.id} type="button" onClick={() => setAccountModalId(account.id)} className="min-w-0 rounded-sm border border-[#514461] bg-[#251e32] p-4 text-left transition hover:-translate-y-0.5 hover:border-[#7c6597] hover:bg-[#302741]">
-                  <div className="flex items-start justify-between gap-3"><span className="rounded-lg border border-[#645375] bg-[#21192e] px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-[#c4b3d8]">{getFinanceAccountTypeLabel(account.type)}</span><span className="font-mono text-xs font-black text-[#d8bdf9]">{account.currency}</span></div>
-                  <h4 className="mt-5 truncate text-base font-black text-[#f3eefb]">{account.name}</h4>
-                  <p className={`mt-1 font-mono text-2xl font-black ${balance < 0 ? "text-[#ff927d]" : "text-[#f3eefb]"}`}>{formatMoney(balance, account.currency)}</p>
-                  <p className="mt-4 text-xs font-semibold text-[#aba0bc]">{count} {count === 1 ? "movimiento" : "movimientos"} · Editar cuenta</p>
+                <button key={account.id} type="button" onClick={() => setAccountModalId(account.id)} className={`${ui.panel} ${styles.account} grid gap-2 p-4 text-left`}>
+                  <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="wrap-anywhere text-base font-semibold">{account.name}</span>
+                    <span className="font-mono text-xs font-semibold text-(--accent)">{account.currency}</span>
+                  </span>
+                  <span className="text-xs text-(--workspace-muted)">{getFinanceAccountTypeLabel(account.type)}</span>
+                  <span className={`wrap-anywhere font-mono text-xl font-semibold tabular-nums ${balance < 0 ? "text-(--finance-expense)" : ""}`}>{formatMoney(balance, account.currency)}</span>
+                  <span className="mt-1 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-(--workspace-muted)">
+                    <span>{count} {count === 1 ? "movimiento" : "movimientos"}</span>
+                    <span className="font-semibold text-(--accent) underline underline-offset-2">Editar cuenta</span>
+                  </span>
                 </button>
               );
             })}
@@ -520,24 +542,33 @@ export default function FinanceView({
       ) : null}
 
       {finance.accounts.length > 0 ? (
-        <section aria-labelledby="finance-entries-title" className="overflow-hidden rounded-sm border border-[#514461] bg-[#201a2e]">
-          <div className="flex items-center justify-between border-b border-[#41374f] px-4 py-4 sm:px-5"><h2 id="finance-entries-title" className="scroll-mt-24 font-serif text-2xl tracking-tight text-[#f3eefb]">Movimientos recientes</h2><span className="font-mono text-xs text-[#aba0bc]">{visibleEntries.length}</span></div>
+        <section aria-labelledby="finance-entries-title" className={ui.panel}>
+          <div className="flex items-center justify-between gap-3 border-b border-(--workspace-border) p-4 sm:px-5">
+            <h2 id="finance-entries-title" className={`${ui.panelTitle} scroll-mt-24`}>Movimientos recientes</h2>
+            <span className="font-mono text-xs text-(--workspace-muted)">{visibleEntries.length}</span>
+          </div>
           {visibleEntries.length > 0 ? (
-            <div className="divide-y divide-[#41374f]">
+            <div className="divide-y divide-(--workspace-border)">
               {visibleEntries.map((entry) => {
                 const account = accountById.get(entry.accountId);
                 if (!account) return null;
                 return (
-                  <article key={entry.id} className="grid gap-3 px-4 py-4 transition hover:bg-[#2a2139] sm:grid-cols-[96px_minmax(0,1fr)_auto_auto] sm:items-center sm:px-5">
-                    <time className="font-mono text-xs font-bold text-[#bba9ce]">{entry.date.split("-").reverse().join("/")}</time>
-                    <div className="min-w-0"><p className="truncate text-sm font-black text-[#f0e8fc]">{entry.description}</p><p className="mt-1 truncate text-xs text-[#aba0bc]">{account.name}{entry.category ? ` · ${entry.category}` : ""}</p></div>
-                    <p className={`font-mono text-sm font-black ${entry.kind === "income" ? "text-[#63d3a5]" : "text-[#ff927d]"}`}>{entry.kind === "income" ? "+" : "−"} {formatMoney(entry.amountMinor, account.currency)}</p>
-                    <div className="flex gap-1 sm:justify-end"><button type="button" onClick={() => setEntryModal({ id: entry.id, kind: entry.kind })} className="rounded-lg border border-[#5d4d70] px-2.5 py-1.5 text-xs font-bold text-[#c8bad6] transition hover:bg-[#332743]">Editar</button><button type="button" onClick={() => confirmEntryDelete(entry)} className="rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-bold text-[#d98276] transition hover:border-[#713d3a] hover:bg-[#2e1716]">Eliminar</button></div>
+                  <article key={entry.id} className="grid gap-2 p-4 sm:px-5 md:grid-cols-[6rem_minmax(0,1fr)_minmax(0,auto)_auto] md:items-center md:gap-3">
+                    <time dateTime={entry.date} className="font-mono text-xs text-(--workspace-muted)">{entry.date.split("-").reverse().join("/")}</time>
+                    <div className="min-w-0">
+                      <p className="wrap-anywhere text-sm font-semibold">{entry.description}</p>
+                      <p className="mt-1 wrap-anywhere text-xs text-(--workspace-muted)">{account.name}{entry.category ? ` · ${entry.category}` : ""}</p>
+                    </div>
+                    <p className={`wrap-anywhere font-mono text-sm font-semibold tabular-nums md:text-right ${entry.kind === "income" ? "text-(--finance-income)" : "text-(--finance-expense)"}`}>{entry.kind === "income" ? "+" : "−"} {formatMoney(entry.amountMinor, account.currency)}</p>
+                    <div className="flex flex-wrap gap-2 md:justify-end">
+                      <button type="button" onClick={() => setEntryModal({ id: entry.id, kind: entry.kind })} className={ui.button}>Editar</button>
+                      <button type="button" onClick={() => confirmEntryDelete(entry)} className={dangerButtonClass}>Eliminar</button>
+                    </div>
                   </article>
                 );
               })}
             </div>
-          ) : <p className="px-5 py-10 text-center text-sm text-[#b2a5c6]">{normalizedQuery ? "No hay movimientos que coincidan con la búsqueda." : "Todavía no registraste movimientos."}</p>}
+          ) : <p className="px-5 py-9 text-center text-sm text-(--workspace-muted)">{normalizedQuery ? "No hay movimientos que coincidan con la búsqueda." : "Todavía no registraste movimientos."}</p>}
         </section>
       ) : null}
 
